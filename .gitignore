@@ -1,0 +1,9 @@
+# Built binary
+/tt
+/dist/
+
+# Safety net: real config and calendar feeds must never be committed. They live
+# in $XDG_CONFIG_HOME and $XDG_CACHE_HOME, but a stray copy here would publish
+# a Google iCal secret address, which is a bearer credential.
+config.toml
+*.ics
