@@ -22,6 +22,31 @@ type Source struct {
 	Name  string
 	URL   string
 	Color string
+	// Email is the address whose reply counts as "mine" among an event's
+	// attendees. Empty means: take it from the feed URL, which is where a
+	// Google private iCal address already carries it.
+	Email string
+}
+
+// Attendee is one invitee of an event. Status is the iCalendar PARTSTAT,
+// uppercased: ACCEPTED, DECLINED, TENTATIVE or NEEDS-ACTION. A feed that
+// carries no reply leaves it empty.
+type Attendee struct {
+	Name     string
+	Email    string
+	Status   string
+	Optional bool // ROLE=OPT-PARTICIPANT
+	Resource bool // CUTYPE=RESOURCE, a room rather than a person
+	Self     bool // this attendee is the owner of the feed
+}
+
+// Label is what to call an attendee: the display name when the feed has one,
+// the address otherwise.
+func (a Attendee) Label() string {
+	if strings.TrimSpace(a.Name) != "" {
+		return a.Name
+	}
+	return a.Email
 }
 
 // Event is a concrete occurrence on the timeline. For all-day events Start is
@@ -37,6 +62,41 @@ type Event struct {
 	Start       time.Time
 	End         time.Time
 	AllDay      bool
+	// Status is the event's own STATUS (CONFIRMED or TENTATIVE; cancelled
+	// events are dropped during expansion).
+	Status string
+	// Transparent events do not block the calendar — Google's "free".
+	Transparent bool
+	// Repeat describes the RRULE this occurrence came from, e.g. "every week
+	// on Tue". It is empty for one-off events.
+	Repeat     string
+	URL        string
+	Conference string // Google Meet link, from X-GOOGLE-CONFERENCE
+	Organizer  Attendee
+	Attendees  []Attendee
+	// MyStatus is the owner's own PARTSTAT, empty when the feed does not say
+	// who is who — a calendar with no guests never does.
+	MyStatus string
+}
+
+// Guests counts the replies, leaving out meeting rooms and other resources.
+func (e Event) Guests() (going, maybe, declined, noReply int) {
+	for _, a := range e.Attendees {
+		if a.Resource {
+			continue
+		}
+		switch a.Status {
+		case "ACCEPTED":
+			going++
+		case "TENTATIVE":
+			maybe++
+		case "DECLINED":
+			declined++
+		default:
+			noReply++
+		}
+	}
+	return going, maybe, declined, noReply
 }
 
 // OccursOn reports whether the event covers any part of the given local day.
@@ -215,6 +275,8 @@ func (c *Client) Events(ctx context.Context, sources []Source, from, to time.Tim
 // expand turns raw VEVENTs into concrete occurrences inside [from, to),
 // applying RRULE, EXDATE, and RECURRENCE-ID overrides.
 func expand(raw []vevent, src Source, from, to time.Time) []Event {
+	self := strings.ToLower(firstNonEmpty(src.Email, ownerFromURL(src.URL)))
+
 	// Group by UID: one base event plus any modified-instance overrides.
 	bases := map[string]vevent{}
 	overrides := map[string][]vevent{}
@@ -245,6 +307,16 @@ func expand(raw []vevent, src Source, from, to time.Time) []Event {
 				return
 			}
 		}
+		// The feed does not mark an attendee as "me", so the owner's address
+		// decides whose reply is the event's own.
+		attendees := append([]Attendee(nil), v.Attendees...)
+		var mine string
+		for i := range attendees {
+			if self != "" && strings.EqualFold(attendees[i].Email, self) {
+				attendees[i].Self = true
+				mine = attendees[i].Status
+			}
+		}
 		out = append(out, Event{
 			UID:         v.UID,
 			Summary:     firstNonEmpty(v.Summary, "(no title)"),
@@ -255,6 +327,14 @@ func expand(raw []vevent, src Source, from, to time.Time) []Event {
 			Start:       start,
 			End:         end,
 			AllDay:      v.AllDay,
+			Status:      v.Status,
+			Transparent: v.Transparent,
+			Repeat:      repeatLabel(v.RRule),
+			URL:         v.URL,
+			Conference:  v.Conference,
+			Organizer:   v.Organizer,
+			Attendees:   attendees,
+			MyStatus:    mine,
 		})
 	}
 
@@ -318,6 +398,78 @@ func buildSet(base vevent, overrides []vevent) (*rrule.Set, error) {
 		}
 	}
 	return set, nil
+}
+
+// ownerFromURL recovers the calendar's own address from a Google iCal feed
+// URL, which has the shape
+// .../calendar/ical/<calendar id>/private-<token>/basic.ics and whose calendar
+// id is the owner's address. Only the address is taken; the secret never
+// leaves the fetch path.
+func ownerFromURL(feedURL string) string {
+	u, err := url.Parse(feedURL)
+	if err != nil {
+		return ""
+	}
+	parts := strings.Split(strings.Trim(u.Path, "/"), "/")
+	for i, p := range parts {
+		if strings.EqualFold(p, "ical") && i+1 < len(parts) && strings.Contains(parts[i+1], "@") {
+			return parts[i+1]
+		}
+	}
+	return ""
+}
+
+// repeatLabel turns an RRULE into something a person can read. It covers the
+// shapes Google emits; anything else falls back to the rule itself, which is
+// still more use than nothing.
+func repeatLabel(rule string) string {
+	if strings.TrimSpace(rule) == "" {
+		return ""
+	}
+	parts := map[string]string{}
+	for _, seg := range strings.Split(rule, ";") {
+		if k, v, ok := strings.Cut(seg, "="); ok {
+			parts[strings.ToUpper(k)] = strings.ToUpper(strings.TrimSpace(v))
+		}
+	}
+	unit := map[string]string{
+		"DAILY": "day", "WEEKLY": "week", "MONTHLY": "month", "YEARLY": "year",
+	}[parts["FREQ"]]
+	if unit == "" {
+		return strings.ToLower(rule)
+	}
+	label := "every " + unit
+	if n := parts["INTERVAL"]; n != "" && n != "1" {
+		label = "every " + n + " " + unit + "s"
+	}
+	if days := weekdayList(parts["BYDAY"]); days != "" && parts["FREQ"] == "WEEKLY" {
+		label += " on " + days
+	}
+	switch {
+	case parts["COUNT"] != "":
+		label += ", " + parts["COUNT"] + " times"
+	case len(parts["UNTIL"]) >= 8:
+		if t, err := time.Parse("20060102", parts["UNTIL"][:8]); err == nil {
+			label += ", until " + t.Format("2006-01-02")
+		}
+	}
+	return label
+}
+
+// weekdayList renders an RRULE BYDAY list ("MO,WE" or "2TU") as weekday names.
+func weekdayList(byday string) string {
+	names := map[string]string{
+		"SU": "Sun", "MO": "Mon", "TU": "Tue", "WE": "Wed",
+		"TH": "Thu", "FR": "Fri", "SA": "Sat",
+	}
+	var out []string
+	for _, d := range strings.Split(byday, ",") {
+		d = strings.TrimLeft(strings.TrimSpace(d), "+-0123456789")
+		if n, ok := names[d]; ok {
+			out = append(out, n)
+		}
+	}
+	return strings.Join(out, " ")
 }
 
 // duration returns the event length, defaulting to one day for all-day events
