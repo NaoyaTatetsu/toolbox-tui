@@ -36,6 +36,21 @@
       "matchUpdateTypes": ["major"],
       "automerge": false,
       "addLabels": ["major"]
+    },
+    {
+      "description": "The go datasource cannot resolve this one (no-result), so the versions come from the monorepo's own tags, which carry an ansi/ prefix that extractVersion strips.",
+      "matchDatasources": ["go"],
+      "matchDepNames": ["github.com/charmbracelet/x/ansi"],
+      "overrideDatasource": "github-tags",
+      "overridePackageName": "charmbracelet/x",
+      "extractVersion": "^ansi/(?<version>.+)$"
+    },
+    {
+      "description": "Same lookup failure, ordinary repository: read its tags directly.",
+      "matchDatasources": ["go"],
+      "matchDepNames": ["github.com/teambition/rrule-go"],
+      "overrideDatasource": "github-tags",
+      "overridePackageName": "teambition/rrule-go"
     }
   ],
   "vulnerabilityAlerts": {
