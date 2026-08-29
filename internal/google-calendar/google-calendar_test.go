@@ -261,3 +261,129 @@ func TestScrubErrorRemovesTheSecret(t *testing.T) {
 		t.Errorf("scrubbing lost the cause: %v", out)
 	}
 }
+
+func TestAttendeesCarryTheirReplies(t *testing.T) {
+	feed := ics(
+		"BEGIN:VCALENDAR",
+		"X-WR-TIMEZONE:Asia/Tokyo",
+		"BEGIN:VEVENT",
+		"UID:one-on-one@example.com",
+		"SUMMARY:1:1",
+		"DTSTART;TZID=Asia/Tokyo:20260828T140000",
+		"DTEND;TZID=Asia/Tokyo:20260828T150000",
+		"ORGANIZER;CN=Alice:mailto:alice@example.com",
+		"ATTENDEE;CN=Alice;PARTSTAT=ACCEPTED:mailto:alice@example.com",
+		"ATTENDEE;CN=Me;PARTSTAT=TENTATIVE:MAILTO:Me@Example.com",
+		"ATTENDEE;CN=Bob;ROLE=OPT-PARTICIPANT;PARTSTAT=NEEDS-ACTION:mailto:bob@example.com",
+		"ATTENDEE;CUTYPE=RESOURCE;CN=Room B;PARTSTAT=ACCEPTED:mailto:room@resource.calendar.google.com",
+		"TRANSP:TRANSPARENT",
+		"X-GOOGLE-CONFERENCE:https://meet.example.invalid/abc-defg-hij",
+		"RRULE:FREQ=WEEKLY;BYDAY=FR",
+		"END:VEVENT",
+		"END:VCALENDAR",
+	)
+	raw, err := parseCalendar(strings.NewReader(feed), jst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The owner's address comes from the feed URL, exactly as a Google private
+	// iCal address carries it.
+	src := Source{
+		Name: "personal",
+		URL:  "https://calendar.google.com/calendar/ical/me%40example.com/private-secret/basic.ics",
+	}
+	from := time.Date(2026, 8, 28, 0, 0, 0, 0, jst)
+	evs := expand(raw, src, from, from.AddDate(0, 0, 1))
+	if len(evs) != 1 {
+		t.Fatalf("got %d occurrences, want 1", len(evs))
+	}
+	ev := evs[0]
+
+	if ev.MyStatus != "TENTATIVE" {
+		t.Errorf("MyStatus = %q, want TENTATIVE", ev.MyStatus)
+	}
+	var self string
+	for _, a := range ev.Attendees {
+		if a.Self {
+			self = a.Email
+		}
+	}
+	if self != "Me@Example.com" {
+		t.Errorf("the owner was matched to %q, want the address from the feed URL", self)
+	}
+	going, maybe, declined, noReply := ev.Guests()
+	if going != 1 || maybe != 1 || declined != 0 || noReply != 1 {
+		t.Errorf("Guests() = %d/%d/%d/%d, want 1 going, 1 maybe, 0 declined, 1 no reply (the room does not count)",
+			going, maybe, declined, noReply)
+	}
+	if !ev.Transparent {
+		t.Error("TRANSP:TRANSPARENT did not survive expansion")
+	}
+	if ev.Conference != "https://meet.example.invalid/abc-defg-hij" {
+		t.Errorf("Conference = %q", ev.Conference)
+	}
+	if ev.Organizer.Label() != "Alice" {
+		t.Errorf("Organizer = %q", ev.Organizer.Label())
+	}
+	if ev.Repeat != "every week on Fri" {
+		t.Errorf("Repeat = %q", ev.Repeat)
+	}
+}
+
+// TestAFeedWithoutAttendeesHasNoReply keeps a calendar with no guests from
+// claiming the owner never answered.
+func TestAFeedWithoutAttendeesHasNoReply(t *testing.T) {
+	feed := ics(
+		"BEGIN:VCALENDAR",
+		"BEGIN:VEVENT",
+		"UID:solo@example.com",
+		"SUMMARY:Focus time",
+		"DTSTART;TZID=Asia/Tokyo:20260828T090000",
+		"DTEND;TZID=Asia/Tokyo:20260828T100000",
+		"END:VEVENT",
+		"END:VCALENDAR",
+	)
+	raw, err := parseCalendar(strings.NewReader(feed), jst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	from := time.Date(2026, 8, 28, 0, 0, 0, 0, jst)
+	evs := expand(raw, Source{Name: "personal", URL: "https://example.invalid/basic.ics"}, from, from.AddDate(0, 0, 1))
+	if len(evs) != 1 {
+		t.Fatalf("got %d events, want 1", len(evs))
+	}
+	if evs[0].MyStatus != "" {
+		t.Errorf("MyStatus = %q, want empty", evs[0].MyStatus)
+	}
+}
+
+func TestOwnerFromURL(t *testing.T) {
+	cases := map[string]string{
+		"https://calendar.google.com/calendar/ical/me%40example.com/private-abc/basic.ics":            "me@example.com",
+		"https://calendar.google.com/calendar/ical/team%40group.calendar.google.com/public/basic.ics": "team@group.calendar.google.com",
+		"https://example.invalid/feed.ics": "",
+		"://nonsense":                      "",
+	}
+	for in, want := range cases {
+		if got := ownerFromURL(in); got != want {
+			t.Errorf("ownerFromURL(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestRepeatLabel(t *testing.T) {
+	cases := map[string]string{
+		"":                                   "",
+		"FREQ=DAILY":                         "every day",
+		"FREQ=WEEKLY;BYDAY=MO,WE":            "every week on Mon Wed",
+		"FREQ=WEEKLY;INTERVAL=2;BYDAY=FR":    "every 2 weeks on Fri",
+		"FREQ=MONTHLY;BYDAY=2TU;COUNT=6":     "every month, 6 times",
+		"FREQ=YEARLY;UNTIL=20301231T000000Z": "every year, until 2030-12-31",
+		"FREQ=HOURLY":                        "freq=hourly",
+	}
+	for in, want := range cases {
+		if got := repeatLabel(in); got != want {
+			t.Errorf("repeatLabel(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

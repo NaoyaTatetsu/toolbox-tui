@@ -41,6 +41,10 @@ type CalendarSource struct {
 	Name  string `toml:"name"`
 	URL   string `toml:"url"`
 	Color string `toml:"color"` // optional hex, e.g. "#7aa2f7"
+	// Email decides whose reply an event's RSVP shows. It defaults to the
+	// address in the feed URL, which is right for a personal Google calendar;
+	// set it when the feed belongs to someone else's calendar.
+	Email string `toml:"email"`
 }
 
 type UI struct {

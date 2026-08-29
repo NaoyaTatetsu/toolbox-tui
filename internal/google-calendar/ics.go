@@ -35,10 +35,32 @@ type vevent struct {
 	End          time.Time
 	AllDay       bool
 	HasEnd       bool
+	Transparent  bool
+	URL          string
+	Conference   string
+	Organizer    Attendee
+	Attendees    []Attendee
 	RRule        string
 	ExDates      []time.Time
 	RecurrenceID *time.Time // set on override instances
 	Sequence     int
+}
+
+// parseAttendee reads an ATTENDEE or ORGANIZER line. The value is a
+// CAL-ADDRESS ("mailto:someone@example.com") and the parameters carry the
+// display name, the role, and the reply.
+func parseAttendee(p property) Attendee {
+	addr := strings.TrimSpace(p.Value)
+	if len(addr) >= 7 && strings.EqualFold(addr[:7], "mailto:") {
+		addr = addr[7:]
+	}
+	return Attendee{
+		Name:     unescapeText(p.param("CN")),
+		Email:    addr,
+		Status:   strings.ToUpper(p.param("PARTSTAT")),
+		Optional: strings.EqualFold(p.param("ROLE"), "OPT-PARTICIPANT"),
+		Resource: strings.EqualFold(p.param("CUTYPE"), "RESOURCE"),
+	}
 }
 
 // unfold reads iCalendar content lines, joining RFC 5545 folded continuations
@@ -223,6 +245,16 @@ func parseCalendar(r io.Reader, loc *time.Location) ([]vevent, error) {
 			cur.Location = unescapeText(p.Value)
 		case "STATUS":
 			cur.Status = strings.ToUpper(p.Value)
+		case "TRANSP":
+			cur.Transparent = strings.EqualFold(p.Value, "TRANSPARENT")
+		case "URL":
+			cur.URL = strings.TrimSpace(p.Value)
+		case "X-GOOGLE-CONFERENCE":
+			cur.Conference = strings.TrimSpace(p.Value)
+		case "ORGANIZER":
+			cur.Organizer = parseAttendee(p)
+		case "ATTENDEE":
+			cur.Attendees = append(cur.Attendees, parseAttendee(p))
 		case "RRULE":
 			cur.RRule = p.Value
 		case "SEQUENCE":

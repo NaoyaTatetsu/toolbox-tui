@@ -80,7 +80,20 @@ func testEvents() []googlecalendar.Event {
 		Start: time.Date(2026, 8, 27, 0, 0, 0, 0, time.Local),
 		End:   time.Date(2026, 8, 30, 0, 0, 0, 0, time.Local),
 	}
-	return []googlecalendar.Event{allDay, mk(10, 0, 30*time.Minute, "Standup"), mk(14, 0, time.Hour, "1:1 with a very long meeting title")}
+	oneOnOne := mk(14, 0, time.Hour, "1:1 with a very long meeting title")
+	oneOnOne.Location = "Meeting room B"
+	oneOnOne.Description = "Agenda:\n- last week\n- next week"
+	oneOnOne.Repeat = "every week on Fri"
+	oneOnOne.Conference = "https://meet.example.invalid/abc-defg-hij"
+	oneOnOne.MyStatus = "TENTATIVE"
+	oneOnOne.Organizer = googlecalendar.Attendee{Name: "Alice", Email: "alice@example.com"}
+	oneOnOne.Attendees = []googlecalendar.Attendee{
+		{Name: "Alice", Email: "alice@example.com", Status: "ACCEPTED"},
+		{Name: "Me", Email: "me@example.com", Status: "TENTATIVE", Self: true},
+		{Name: "Bob", Email: "bob@example.com", Status: "DECLINED"},
+		{Name: "Room B", Email: "room@resource.invalid", Status: "ACCEPTED", Resource: true},
+	}
+	return []googlecalendar.Event{allDay, mk(10, 0, 30*time.Minute, "Standup"), oneOnOne}
 }
 
 func newTestModel(w, h int) Model {
@@ -202,23 +215,15 @@ func TestSelectionSurvivesReload(t *testing.T) {
 	}
 }
 
-func TestCalendarAgendaMergesEventsAndTasks(t *testing.T) {
+// TestCalendarAgendaListsEventsOnly guards the split between the two halves of
+// the tool: the day pane is a calendar, not a second task list.
+func TestCalendarAgendaListsEventsOnly(t *testing.T) {
 	m := newTestModel(120, 40)
-	entries := m.agenda(time.Date(2026, 8, 28, 0, 0, 0, 0, time.Local))
-	var events, tasks int
-	for _, e := range entries {
-		if e.event != nil {
-			events++
-		} else {
-			tasks++
-		}
-	}
-	if events != 3 {
-		t.Errorf("got %d events on Aug 28, want 3 (all-day trip + 2 timed)", events)
-	}
-	// #103 spans Aug 26 – Sep 10, so it covers Aug 28.
-	if tasks != 1 {
-		t.Errorf("got %d tasks on Aug 28, want 1", tasks)
+	// #103 spans Aug 26 – Sep 10, so it covers Aug 28 and would have shown up
+	// here back when tasks were merged into the agenda.
+	events := m.agenda(time.Date(2026, 8, 28, 0, 0, 0, 0, time.Local))
+	if len(events) != 3 {
+		t.Errorf("got %d entries on Aug 28, want 3 (all-day trip + 2 timed events)", len(events))
 	}
 }
 
@@ -350,36 +355,157 @@ func stripANSI(s string) string {
 	return b.String()
 }
 
-// TestMonthGridOmitsSpanningTasks guards against the month view repeating a
-// long task on every day of its range, which drowns out the due dates.
-func TestMonthGridOmitsSpanningTasks(t *testing.T) {
+// TestCalendarEnterOpensTheEvent walks the calendar's two steps: enter moves
+// from the grid into the day pane, and enter again opens the row under the
+// cursor as a detail overlay saying when and where it happens.
+func TestCalendarEnterOpensTheEvent(t *testing.T) {
 	m := newTestModel(120, 40)
-	// #103 runs Aug 26 – Sep 10 and is due Sep 10.
-	mid := time.Date(2026, 8, 30, 0, 0, 0, 0, time.Local)
-	for _, e := range m.dayCellEntries(mid) {
-		if e.task != nil && e.task.Number == 103 {
-			t.Error("a mid-span day should not show the task in the month grid")
+	m.view = viewCalendar
+	if m = press(m, "enter"); m.month.focus != focusAgenda {
+		t.Fatal("enter on the grid did not move into the day pane")
+	}
+	// Aug 28 reads: the all-day trip, Standup, then the 1:1.
+	m = press(m, "down", "down", "enter")
+	if m.overlay != overlayEvent {
+		t.Fatalf("enter on the day pane left the overlay at %v", m.overlay)
+	}
+	out := stripANSI(m.View())
+	for _, want := range []string{
+		"1:1 with a very long meeting title",
+		"2026-08-28 (Fri)  14:00–15:00",
+		"Meeting room B",
+		"- last week",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the event overlay is missing %q\n%s", want, out)
 		}
 	}
-	due := time.Date(2026, 9, 10, 0, 0, 0, 0, time.Local)
-	var found bool
-	for _, e := range m.dayCellEntries(due) {
-		if e.task != nil && e.task.Number == 103 {
-			found = true
+	// The first esc closes the overlay, the second leaves the day pane.
+	if m = press(m, "esc"); m.overlay != overlayNone || m.month.focus != focusAgenda {
+		t.Errorf("esc left overlay %v, focus %v", m.overlay, m.month.focus)
+	}
+	if m = press(m, "esc"); m.month.focus != focusGrid {
+		t.Error("esc did not hand the focus back to the grid")
+	}
+}
+
+// TestEventDetailShowsTheReplies is the answer to "am I going to this?": the
+// overlay must say what the owner replied, and what everyone else did.
+func TestEventDetailShowsTheReplies(t *testing.T) {
+	m := newTestModel(120, 40)
+	m.view = viewCalendar
+	m = press(m, "enter", "down", "down", "enter")
+	if m.overlay != overlayEvent {
+		t.Fatalf("the overlay is %v", m.overlay)
+	}
+	out := stripANSI(m.View())
+	for _, want := range []string{
+		"You        ? maybe", // the owner's own PARTSTAT
+		"3 guests  ·  1 going, 1 maybe, 1 not going",
+		"✓ Alice  (organizer)",
+		"? Me  (you)",
+		"✗ Bob",
+		"Rooms      Room B", // resources are not guests
+		"Repeats    every week on Fri",
+		"Call       https://meet.example.invalid/abc-defg-hij",
+		"o open the link",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the event overlay is missing %q\n%s", want, out)
 		}
 	}
-	if !found {
-		t.Error("the due date should show the task in the month grid")
-	}
-	// The agenda still surfaces it, marked as work in progress.
-	var spanning bool
-	for _, e := range m.agenda(mid) {
-		if e.task != nil && e.task.Number == 103 && e.spanning {
-			spanning = true
+}
+
+// TestEventDetailStaysQuietWithoutGuests keeps the reply lines out of an
+// event that nobody was invited to, where the feed says nothing about replies.
+func TestEventDetailStaysQuietWithoutGuests(t *testing.T) {
+	m := newTestModel(120, 40)
+	m.view = viewCalendar
+	m = press(m, "enter", "down", "enter") // Standup: no attendees in the fixture
+	out := stripANSI(m.View())
+	for _, unwanted := range []string{"You  ", "guest", "no reply", "Rooms"} {
+		if strings.Contains(out, unwanted) {
+			t.Errorf("the overlay invented %q for an event with no guests\n%s", unwanted, out)
 		}
 	}
-	if !spanning {
-		t.Error("the agenda should still list the task as in flight")
+}
+
+// TestCalendarArrowsFollowTheFocus is the point of the two panes: the same
+// keys step between days in the grid and between entries in the day pane.
+func TestCalendarArrowsFollowTheFocus(t *testing.T) {
+	m := newTestModel(120, 40)
+	m.view = viewCalendar
+	day := m.month.day
+
+	m = press(m, "enter", "down")
+	if !m.month.day.Equal(day) {
+		t.Errorf("down in the day pane moved the day to %s", m.month.day.Format("2006-01-02"))
+	}
+	if m.month.agenda != 1 {
+		t.Errorf("down in the day pane left the cursor at %d, want 1", m.month.agenda)
+	}
+	// Aug 28 holds three entries, so the cursor stops at the last one.
+	if m = press(m, "down", "down", "down"); m.month.agenda != 2 {
+		t.Errorf("the day pane cursor ran to %d, want it pinned at 2", m.month.agenda)
+	}
+
+	m = press(m, "esc", "down")
+	if m.month.focus != focusGrid {
+		t.Fatal("esc did not hand the focus back to the grid")
+	}
+	if want := day.AddDate(0, 0, 7); !m.month.day.Equal(want) {
+		t.Errorf("down in the grid selected %s, want %s",
+			m.month.day.Format("2006-01-02"), want.Format("2006-01-02"))
+	}
+	if m.month.agenda != 0 {
+		t.Errorf("moving to another day left the pane cursor at %d", m.month.agenda)
+	}
+}
+
+// TestCalendarEnterOnAnEmptyDayDoesNothing keeps the overlay shut when the
+// cursor has nothing under it.
+func TestCalendarEnterOnAnEmptyDayDoesNothing(t *testing.T) {
+	m := newTestModel(120, 40)
+	m.view = viewCalendar
+	m.month.day = time.Date(2026, 8, 5, 0, 0, 0, 0, time.Local)
+	if m = press(m, "enter", "enter"); m.overlay != overlayNone {
+		t.Errorf("enter on an empty day opened overlay %v", m.overlay)
+	}
+	if m.month.focus != focusGrid {
+		t.Error("an empty day should not take the focus into the day pane")
+	}
+}
+
+// TestEventWhenSpellsOutTheSpan pins the all-day arithmetic: iCalendar's end
+// date is exclusive, so a trip ending Aug 30 covers through Aug 29.
+func TestEventWhenSpellsOutTheSpan(t *testing.T) {
+	events := testEvents()
+	cases := map[int]string{
+		0: "2026-08-27 (Thu) – 2026-08-29 (Sat)  all-day",
+		1: "2026-08-28 (Fri)  10:00–10:30",
+	}
+	for i, want := range cases {
+		if got := eventWhen(events[i]); got != want {
+			t.Errorf("eventWhen(%q) = %q, want %q", events[i].Summary, got, want)
+		}
+	}
+}
+
+// TestCalendarShowsNoTasks checks the rendered frame rather than the model:
+// no task from the project may reach the month grid or the day pane.
+func TestCalendarShowsNoTasks(t *testing.T) {
+	m := newTestModel(120, 40)
+	m.view = viewCalendar
+	out := stripANSI(m.View())
+	// #102 is due Aug 27, #103 runs Aug 26 – Sep 10 and the draft is due Aug 31,
+	// so every one of them falls inside the rendered August grid.
+	for _, task := range []string{"請求書の確認", "quarterly report", "Draft with no issue"} {
+		if strings.Contains(out, task) {
+			t.Errorf("the calendar shows the task %q", task)
+		}
+	}
+	if !strings.Contains(out, "Standup") {
+		t.Error("the calendar dropped its events along with the tasks")
 	}
 }
 
@@ -1191,13 +1317,13 @@ func TestClickSelectsCalendarDay(t *testing.T) {
 			t.Fatalf("region for %s is at row %d, past the %d-line frame",
 				r.day.Format("2006-01-02"), r.y, len(lines))
 		}
-		// A cell's first line holds only its day number, and every cell on that
-		// screen row is likewise ASCII, so byte offsets are cell offsets here.
-		plain := stripANSI(lines[r.y])
+		// A cell's first line holds only its day number, and the column rules
+		// beside it are single-width box characters, so runes are cells here.
+		plain := []rune(stripANSI(lines[r.y]))
 		if r.x+r.w > len(plain) {
 			t.Fatalf("region for %s spans past the line", r.day.Format("2006-01-02"))
 		}
-		cell := plain[r.x : r.x+r.w]
+		cell := string(plain[r.x : r.x+r.w])
 		if got := strings.TrimSpace(cell); got != fmt.Sprint(r.day.Day()) &&
 			got != "["+fmt.Sprint(r.day.Day())+"]" {
 			t.Errorf("cell at (%d,%d) reads %q but is mapped to %s",
@@ -1250,7 +1376,7 @@ func TestClickSelectsAgendaEntry(t *testing.T) {
 	m.view = viewCalendar
 	frame := m.View()
 
-	// The agenda for Aug 28 lists the all-day trip, two timed events, then #103.
+	// The agenda for Aug 28 lists the all-day trip and the two timed events.
 	entries := m.agenda(m.month.day)
 	if len(entries) < 3 {
 		t.Fatalf("fixture agenda has %d entries", len(entries))
@@ -1262,23 +1388,12 @@ func TestClickSelectsAgendaEntry(t *testing.T) {
 	clicked := click(m, x, y)
 	want := -1
 	for i, e := range entries {
-		if e.event != nil && e.event.Summary == "Standup" {
+		if e.Summary == "Standup" {
 			want = i
 		}
 	}
 	if clicked.month.agenda != want {
 		t.Errorf("clicking Standup at (%d,%d) selected agenda %d, want %d", x, y, clicked.month.agenda, want)
-	}
-
-	// Clicking a task row in the agenda must make enter open that task.
-	tx, ty, ok := findInFrame(frame, "#103")
-	if !ok {
-		t.Fatal("#103 is not on the agenda")
-	}
-	clicked = click(m, tx, ty)
-	it, has := clicked.agendaTask()
-	if !has || it.Number != 103 {
-		t.Errorf("clicking #103 at (%d,%d) did not select it as a task (got %+v)", tx, ty, it)
 	}
 }
 

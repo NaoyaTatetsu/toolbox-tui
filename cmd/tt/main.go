@@ -127,6 +127,9 @@ scroll_interval_ms = 60
 # name  = "personal"
 # url   = "https://calendar.google.com/calendar/ical/…/private-…/basic.ics"
 # color = "#7aa2f7"
+# Whose reply the event detail shows as yours. Defaults to the address in the
+# URL, so only set it when the feed is someone else's calendar.
+# email = "you@example.com"
 `
 
 func initConfig() error {
@@ -295,7 +298,7 @@ func doctor() error {
 	calendarClient := googlecalendar.NewClient(time.Minute)
 	now := time.Now()
 	for _, s := range cfg.Calendar.Sources {
-		src := googlecalendar.Source{Name: s.Name, URL: s.URL, Color: s.Color}
+		src := googlecalendar.Source{Name: s.Name, URL: s.URL, Color: s.Color, Email: s.Email}
 		evs, errs := calendarClient.Events(ctx, []googlecalendar.Source{src}, now.AddDate(0, -1, 0), now.AddDate(0, 3, 0), time.Local)
 		if len(errs) > 0 {
 			for _, e := range errs {
