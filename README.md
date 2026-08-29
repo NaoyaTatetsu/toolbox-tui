@@ -351,12 +351,15 @@ LIVE=1 go test ./internal/ui -run TestStartupTiming -v # 起動時間の内訳
 ### 依存関係の更新
 
 [Renovate](https://docs.renovatebot.com/) が `go.mod` と GitHub Actions のバージョンを追う。
-設定は `renovate.json`。
+設定は `renovate.json5`。
 
-- 更新が出たら PR を作る（曜日や時刻の指定はなし）。Go モジュールと Actions はそれぞれ 1 本にまとめる
+- **深夜（2〜6時 JST）にまとめて起票する**。自動マージもこの窓の中で走るので、日中に
+  `develop` が足元で動くことがない
+- 時間あたりの起票制限（既定 2件/時）は外してある。同時オープン数の上限（10本）は残す
+- Go モジュールと Actions はそれぞれ 1 本にまとめる
 - **CI が通った PR は Renovate が自動でマージする**（squash）。落ちた PR は開いたまま残る
 - **メジャー更新は自動マージしない**。`major` ラベルを付けた PR が立つだけで、マージは手動
-- 脆弱性の修正は `security` ラベル付きで立つ
+- 脆弱性の修正は深夜の窓を待たず、`security` ラベル付きで立つ
 - 状況は Dependency Dashboard issue に一覧される
 
 自動マージは Renovate 自身が行うため、ブランチ保護の設定は不要。GitHub 側の

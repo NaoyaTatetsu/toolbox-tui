@@ -1,0 +1,76 @@
+{
+  $schema: "https://docs.renovatebot.com/renovate-schema.json",
+  extends: [
+    "config:recommended",
+    ":dependencyDashboard",
+    ":semanticCommitsDisabled",
+  ],
+  timezone: "Asia/Tokyo",
+  // 深夜にまとめて起票する。自動マージもこの窓の中で走るので、日中に develop が
+  // 足元で動くことがない。TUI を開いて作業している最中に依存が入れ替わるのを
+  // 避けたいので、即時性より予測可能性を採る
+  schedule: ["after 2am and before 6am"],
+  // 時間あたりの起票制限(既定 2件/時)は外す。直接依存は 6 個 + Actions 2 個と
+  // 小さく、しかもグルーピングで 1〜2 本にまとまるため、制限があっても
+  // 溜まった更新の消化が翌日以降にずれるだけで守るものが無い。
+  // 同時オープン数の上限(prConcurrentLimit の既定 10)はセーフティとして残す
+  prHourlyLimit: 0,
+  labels: ["dependencies"],
+  rebaseWhen: "behind-base-branch",
+  postUpdateOptions: ["gomodTidy"],
+  automerge: true,
+  automergeType: "pr",
+  automergeStrategy: "squash",
+  // GitHub ネイティブの auto-merge は使わない。develop にブランチ保護が無く、
+  // GitHub の auto-merge はマージがブロックされた PR にしか使えないため、
+  // Renovate 自身に「ブランチのチェックが全て green」を確認させてからマージする
+  platformAutomerge: false,
+  packageRules: [
+    {
+      // 個々のモジュールごとではなく、routine な Go の更新を 1 本にまとめる
+      matchManagers: ["gomod"],
+      matchUpdateTypes: ["minor", "patch", "digest"],
+      groupName: "go modules",
+    },
+    {
+      // Actions は滅多に動かないので、まとめて 1 本で足りる
+      matchManagers: ["github-actions"],
+      matchUpdateTypes: ["minor", "patch", "digest"],
+      groupName: "github actions",
+    },
+    {
+      // go ディレクティブは CI が入れるツールチェーンを決めるので、単独で上げる
+      matchManagers: ["gomod"],
+      matchDepTypes: ["golang"],
+      groupName: null,
+    },
+    {
+      // CI が green でも「ビルドが壊れていない・テストが落ちていない」ことしか
+      // 証明しない。メジャーはその下で挙動が変わりうるので人がレビューする
+      matchUpdateTypes: ["major"],
+      automerge: false,
+      addLabels: ["major"],
+    },
+    {
+      // go datasource がこのモジュールを解決できない(no-result)ため、
+      // モノレポのタグから直接読む。タグは ansi/ 接頭辞付きなので剥がす
+      matchDatasources: ["go"],
+      matchDepNames: ["github.com/charmbracelet/x/ansi"],
+      overrideDatasource: "github-tags",
+      overridePackageName: "charmbracelet/x",
+      extractVersion: "^ansi/(?<version>.+)$",
+    },
+    {
+      // 同じ lookup 失敗。普通のリポジトリなのでタグをそのまま読む
+      matchDatasources: ["go"],
+      matchDepNames: ["github.com/teambition/rrule-go"],
+      overrideDatasource: "github-tags",
+      overridePackageName: "teambition/rrule-go",
+    },
+  ],
+  vulnerabilityAlerts: {
+    labels: ["security"],
+    // 脆弱性だけは深夜の窓を待たない
+    schedule: ["at any time"],
+  },
+}
