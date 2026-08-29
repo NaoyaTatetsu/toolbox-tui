@@ -25,10 +25,18 @@ jobs:
             echo "not gofmt'd:"; echo "$unformatted"; exit 1
           fi
 
-      - run: go vet ./...
+      - name: go vet
+        run: go vet ./...
 
       # The tests that talk to GitHub and Google Calendar are gated behind
       # LIVE=1, so the suite runs offline with no credentials.
-      - run: go test -race ./...
+      #
+      # -count=1 defeats Go's test cache. The toolchain cache above restores
+      # results from earlier runs, so a package whose inputs have not changed
+      # reports "(cached)" and never actually executes — which is exactly the
+      # run where a flake or an environment difference would have shown up.
+      - name: go test
+        run: go test -race -count=1 ./...
 
-      - run: go build ./...
+      - name: go build
+        run: go build ./...
