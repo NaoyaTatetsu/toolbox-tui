@@ -5,8 +5,6 @@
     ":dependencyDashboard",
     ":semanticCommitsDisabled"
   ],
-  "timezone": "Asia/Tokyo",
-  "schedule": ["before 9am on monday"],
   "labels": ["dependencies"],
   "rebaseWhen": "behind-base-branch",
   "postUpdateOptions": ["gomodTidy"],
@@ -16,7 +14,7 @@
   "platformAutomerge": false,
   "packageRules": [
     {
-      "description": "One PR a week for the routine Go bumps, rather than one per module.",
+      "description": "One PR for the routine Go bumps, rather than one per module.",
       "matchManagers": ["gomod"],
       "matchUpdateTypes": ["minor", "patch", "digest"],
       "groupName": "go modules"
@@ -41,7 +39,6 @@
     }
   ],
   "vulnerabilityAlerts": {
-    "labels": ["security"],
-    "schedule": ["at any time"]
+    "labels": ["security"]
   }
 }
