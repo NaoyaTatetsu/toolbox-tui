@@ -24,6 +24,7 @@
     {
       "description": "Workflow actions move rarely; one PR covers them all.",
       "matchManagers": ["github-actions"],
+      "matchUpdateTypes": ["minor", "patch", "digest"],
       "groupName": "github actions"
     },
     {
@@ -31,6 +32,12 @@
       "matchManagers": ["gomod"],
       "matchDepTypes": ["golang"],
       "groupName": null
+    },
+    {
+      "description": "A green CI only proves the code still builds and the tests still pass. A major release can change behaviour underneath both, so it waits for a person.",
+      "matchUpdateTypes": ["major"],
+      "automerge": false,
+      "addLabels": ["major"]
     }
   ],
   "vulnerabilityAlerts": {

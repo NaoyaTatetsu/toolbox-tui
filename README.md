@@ -351,6 +351,7 @@ LIVE=1 go test ./internal/ui -run TestStartupTiming -v # 起動時間の内訳
 
 - 週 1 回（月曜朝、Asia/Tokyo）に PR を作る。Go モジュールと Actions はそれぞれ 1 本にまとめる
 - **CI が通った PR は Renovate が自動でマージする**（squash）。落ちた PR は開いたまま残る
+- **メジャー更新は自動マージしない**。`major` ラベルを付けた PR が立つだけで、マージは手動
 - 脆弱性の修正だけは曜日を待たずに PR が立つ
 - 状況は Dependency Dashboard issue に一覧される
 
