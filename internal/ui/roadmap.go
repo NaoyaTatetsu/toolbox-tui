@@ -27,6 +27,9 @@ type roadmapState struct {
 	origin  time.Time // first day shown, at local midnight
 	zoom    int
 	dayDflt int
+	// doneHidden counts the finished tasks setItems left out, so the legend can
+	// say they exist instead of letting the timeline look short.
+	doneHidden int
 }
 
 func newRoadmapState(now time.Time, defaultDays int) roadmapState {
@@ -48,12 +51,28 @@ func newRoadmapState(now time.Time, defaultDays int) roadmapState {
 // across a reload. On the first load it lands on the earliest task that has not
 // finished yet, so the view opens on live work instead of on a wall of arrows
 // pointing at last month.
+//
+// Tasks whose status is Done stay out: the roadmap is for work still in front
+// of you, and a finished quarter otherwise fills it with bars nobody is waiting
+// on. A closed issue still sitting in another column counts as live, because
+// that is what the board says about it.
 func (r *roadmapState) setItems(items []gh.Item, now time.Time) {
 	prev := ""
 	if r.cursor >= 0 && r.cursor < len(r.items) {
 		prev = r.items[r.cursor].ID
 	}
 	first := len(r.items) == 0
+
+	live := make([]gh.Item, 0, len(items))
+	r.doneHidden = 0
+	for _, it := range items {
+		if strings.EqualFold(it.Status, "Done") {
+			r.doneHidden++
+			continue
+		}
+		live = append(live, it)
+	}
+	items = live
 	r.items = items
 
 	if prev != "" {
@@ -142,8 +161,11 @@ func (m Model) updateRoadmap(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m Model) renderRoadmap(width, height, top int) string {
 	r := m.roadmap
 	if len(r.items) == 0 {
-		return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center,
-			styMuted.Render("no tasks have a Start Date or End Date"))
+		empty := "no tasks have a Start Date or End Date"
+		if r.doneHidden > 0 {
+			empty = fmt.Sprintf("every scheduled task is Done (%d hidden)", r.doneHidden)
+		}
+		return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, styMuted.Render(empty))
 	}
 
 	labelW := clamp(width/3, minLabelWidth, maxLabelWidth)
@@ -180,6 +202,9 @@ func (m Model) renderRoadmap(width, height, top int) string {
 	last := r.origin.AddDate(0, 0, days-1)
 	legend := fmt.Sprintf("%s – %s  ·  %d days  ·  %d/%d tasks",
 		r.origin.Format("2006-01-02"), last.Format("2006-01-02"), days, r.cursor+1, len(r.items))
+	if r.doneHidden > 0 {
+		legend += fmt.Sprintf("  ·  %d done hidden", r.doneHidden)
+	}
 	b.WriteString(styMuted.Render(legend))
 	return b.String()
 }

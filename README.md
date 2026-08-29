@@ -5,7 +5,7 @@ GitHub Project（Projects v2）と Google Calendar をターミナルで扱う�
 Go + [Bubble Tea](https://github.com/charmbracelet/bubbletea) 製。
 
 - **Board** — Status 列ごとのカンバン。カードの移動でそのまま GitHub の Status を更新
-- **Roadmap** — Start Date / End Date のガントチャート。ズームとスクロール対応
+- **Roadmap** — Start Date / End Date のガントチャート。ズームとスクロール対応。Status が Done のタスクは表示しない
 - **Calendar** — 月グリッド + 日別アジェンダ。Google Calendar の予定だけを表示（タスクは Board / Roadmap 側）。詳細では自分の出欠・ゲストの回答・会議リンクまで確認できる
 - **タスク登録** — タイトル / 内容 / ラベル / 期日 / 優先度 を入力して Issue を作成し、Project に追加してフィールドを設定
 
@@ -123,6 +123,10 @@ tt doctor
 | `o` | ブラウザで開く |
 
 ### Roadmap
+
+Status が `Done` のタスクは表示しない（凡例に `N done hidden` として件数だけ出る）。
+GitHub 上で閉じていても Status が `Done` でないタスクは、ボードがまだ進行中として
+扱っているので表示に残る。
 
 | キー | 動作 |
 | --- | --- |

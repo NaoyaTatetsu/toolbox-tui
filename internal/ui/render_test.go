@@ -509,6 +509,58 @@ func TestCalendarShowsNoTasks(t *testing.T) {
 	}
 }
 
+// TestRoadmapHidesDoneTasks keeps finished work off the timeline, and keeps
+// the fact that it exists in the legend rather than dropping it in silence.
+func TestRoadmapHidesDoneTasks(t *testing.T) {
+	m := newTestModel(120, 40)
+	// #104 is scheduled for Aug 14 and its status is Done.
+	for _, it := range m.roadmap.items {
+		if it.Number == 104 {
+			t.Error("a task whose status is Done is still on the roadmap")
+		}
+	}
+	if m.roadmap.doneHidden != 1 {
+		t.Errorf("doneHidden = %d, want 1", m.roadmap.doneHidden)
+	}
+	m.view = viewRoadmap
+	if out := stripANSI(m.View()); !strings.Contains(out, "1 done hidden") {
+		t.Errorf("the legend does not mention the hidden task\n%s", out)
+	}
+
+	// A closed issue that nobody moved out of its column is still live work on
+	// the board, so the roadmap keeps showing it.
+	for i := range m.project.Items {
+		if m.project.Items[i].Number == 103 { // In Progress, Aug 26 – Sep 10
+			m.project.Items[i].State = "CLOSED"
+		}
+	}
+	m.rebuild()
+	var found bool
+	for _, it := range m.roadmap.items {
+		if it.Number == 103 {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("a closed issue whose status is not Done was dropped from the roadmap")
+	}
+}
+
+// TestRoadmapSaysWhenEverythingIsDone keeps the empty view from blaming the
+// dates when the real reason is that the work is finished.
+func TestRoadmapSaysWhenEverythingIsDone(t *testing.T) {
+	m := newTestModel(120, 40)
+	for i := range m.project.Items {
+		m.project.Items[i].Status = "Done"
+	}
+	m.rebuild()
+	m.view = viewRoadmap
+	out := stripANSI(m.View())
+	if !strings.Contains(out, "every scheduled task is Done") {
+		t.Errorf("the empty roadmap does not say why it is empty\n%s", out)
+	}
+}
+
 // TestRoadmapOpensOnLiveWork guards the cursor default: with a backlog of
 // finished tasks the roadmap should not open scrolled to last month.
 func TestRoadmapOpensOnLiveWork(t *testing.T) {
