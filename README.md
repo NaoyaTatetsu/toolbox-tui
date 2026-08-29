@@ -344,6 +344,20 @@ LIVE=1 go test ./internal/ui -run TestLiveRender -v    # 各ビューを実デ�
 LIVE=1 go test ./internal/ui -run TestStartupTiming -v # 起動時間の内訳
 ```
 
+### 依存関係の更新
+
+[Renovate](https://docs.renovatebot.com/) が `go.mod` と GitHub Actions のバージョンを追う。
+設定は `renovate.json`。
+
+- 週 1 回（月曜朝、Asia/Tokyo）に PR を作る。Go モジュールと Actions はそれぞれ 1 本にまとめる
+- **CI が通った PR は Renovate が自動でマージする**（squash）。落ちた PR は開いたまま残る
+- 脆弱性の修正だけは曜日を待たずに PR が立つ
+- 状況は Dependency Dashboard issue に一覧される
+
+自動マージは Renovate 自身が行うため、ブランチ保護の設定は不要。GitHub 側の
+auto-merge に任せたい場合は `platformAutomerge` を `true` にし、`develop` に
+必須ステータスチェックを設定する。
+
 `LIVE=1` のテストは `~/.config/toolbox-tui/config.toml` を読むので、自分の
 プロジェクトに向けて実行することになる。CI では動かない。
 
