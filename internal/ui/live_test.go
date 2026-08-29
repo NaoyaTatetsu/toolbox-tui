@@ -61,7 +61,7 @@ func TestLiveRender(t *testing.T) {
 
 	for _, view := range []viewID{viewBoard, viewRoadmap, viewCalendar} {
 		m.view = view
-		out := m.View()
+		out := m.render()
 		for i, line := range strings.Split(out, "\n") {
 			if w := lipglossWidth(line); w > m.width {
 				t.Errorf("%v line %d is %d cells wide, want <= %d", view, i, w, m.width)

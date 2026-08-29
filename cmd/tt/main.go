@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/NaoyaTatetsu/toolbox-tui/internal/cache"
 	"github.com/NaoyaTatetsu/toolbox-tui/internal/config"
@@ -80,12 +80,9 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	opts := []tea.ProgramOption{tea.WithAltScreen()}
-	if cfg.UI.MouseEnabled() {
-		// Cell motion is the lightest mode that still reports wheel events.
-		opts = append(opts, tea.WithMouseCellMotion())
-	}
-	p := tea.NewProgram(ui.New(cfg, ghClient, calendarClient), opts...)
+	// The alt screen and the mouse mode are set by the model's view, which is
+	// where Bubble Tea v2 keeps the terminal's modes.
+	p := tea.NewProgram(ui.New(cfg, ghClient, calendarClient))
 	_, err = p.Run()
 	return err
 }

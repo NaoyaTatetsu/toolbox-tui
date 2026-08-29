@@ -2,11 +2,12 @@ package ui
 
 import (
 	"fmt"
+	"image/color"
 	"strings"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	googlecalendar "github.com/NaoyaTatetsu/toolbox-tui/internal/google-calendar"
 )
@@ -167,7 +168,7 @@ func (m Model) renderCalendar(width, height, top int) string {
 
 // weekdayColor tints the weekend columns the way a wall calendar does: Sunday
 // red, Saturday blue.
-func weekdayColor(d time.Weekday) lipgloss.TerminalColor {
+func weekdayColor(d time.Weekday) color.Color {
 	switch d {
 	case time.Sunday:
 		return colSunday
@@ -432,7 +433,7 @@ func eventWhen(e googlecalendar.Event) string {
 // rsvpParts renders an iCalendar PARTSTAT as a glyph, a phrase, and a colour.
 // An empty reply means the feed never said who is who, which is not the same
 // as an invitation nobody has answered.
-func rsvpParts(status string) (glyph, phrase string, col lipgloss.TerminalColor) {
+func rsvpParts(status string) (glyph, phrase string, col color.Color) {
 	switch strings.ToUpper(status) {
 	case "ACCEPTED":
 		return "✓", "going", colOK
@@ -571,5 +572,5 @@ func (m Model) renderEventDetail() string {
 	}
 	b.WriteString(keyHint(append(hints, [2]string{"esc", "close"})...))
 
-	return styOverlay.Width(w).Render(b.String())
+	return overlayBox(w, b.String())
 }

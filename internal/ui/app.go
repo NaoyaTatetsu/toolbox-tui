@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/NaoyaTatetsu/toolbox-tui/internal/cache"
 	"github.com/NaoyaTatetsu/toolbox-tui/internal/config"
@@ -320,7 +320,10 @@ func openURL(url string) tea.Cmd {
 // ---- Bubble Tea ----
 
 func (m Model) Init() tea.Cmd {
-	cmds := []tea.Cmd{m.loadCache(), m.loadProject(), tick()}
+	// The palette needs to know which way the terminal leans. lipgloss v2 no
+	// longer asks on its own, so the answer is requested here and lands as a
+	// tea.BackgroundColorMsg.
+	cmds := []tea.Cmd{tea.RequestBackgroundColor, m.loadCache(), m.loadProject(), tick()}
 	if c := m.loadRepo(); c != nil {
 		cmds = append(cmds, c)
 	}
@@ -461,15 +464,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, tea.Batch(m.refresh(), clearStatusAfter(5*time.Second))
 
-	case tea.KeyMsg:
+	case tea.BackgroundColorMsg:
+		darkBackground = msg.IsDark()
+		return m, nil
+
+	case tea.KeyPressMsg:
 		return m.handleKey(msg)
 
-	case tea.MouseMsg:
-		if event := tea.MouseEvent(msg); event.Action == tea.MouseActionPress &&
-			event.Button == tea.MouseButtonLeft {
-			return m.handleClick(event.X, event.Y)
+	case tea.MouseClickMsg:
+		if mouse := msg.Mouse(); mouse.Button == tea.MouseLeft {
+			return m.handleClick(mouse.X, mouse.Y)
 		}
-		m, key, ok := m.accumulateScroll(msg, m.timeNow())
+
+	case tea.MouseWheelMsg:
+		m, key, ok := m.accumulateScroll(msg.Mouse(), m.timeNow())
 		if !ok {
 			return m, nil
 		}
@@ -527,32 +535,29 @@ type scrollState struct {
 // terminals that send SGR buttons 6 and 7 — iTerm2, Ghostty, WezTerm, Alacritty
 // and Kitty do; macOS Terminal.app does not. Shift plus a vertical scroll is
 // accepted as the fallback those terminals leave available.
-func (m Model) accumulateScroll(msg tea.MouseMsg, now time.Time) (Model, tea.KeyMsg, bool) {
-	event := tea.MouseEvent(msg)
-	if !event.IsWheel() {
-		return m, tea.KeyMsg{}, false
-	}
+func (m Model) accumulateScroll(event tea.Mouse, now time.Time) (Model, tea.KeyPressMsg, bool) {
+	shift := event.Mod.Contains(tea.ModShift)
 
 	var horizontal bool
 	var delta int
 	switch event.Button {
-	case tea.MouseButtonWheelUp:
-		horizontal, delta = event.Shift, -1
-	case tea.MouseButtonWheelDown:
-		horizontal, delta = event.Shift, +1
-	case tea.MouseButtonWheelLeft:
+	case tea.MouseWheelUp:
+		horizontal, delta = shift, -1
+	case tea.MouseWheelDown:
+		horizontal, delta = shift, +1
+	case tea.MouseWheelLeft:
 		horizontal, delta = true, -1
-	case tea.MouseButtonWheelRight:
+	case tea.MouseWheelRight:
 		horizontal, delta = true, +1
 	default:
-		return m, tea.KeyMsg{}, false
+		return m, tea.KeyPressMsg{}, false
 	}
 
 	// Inside the cooldown, discard the event outright rather than banking it, so
 	// a long momentum tail cannot pile up steps to release in a burst.
 	if interval := m.cfg.UI.ScrollInterval(); interval > 0 &&
 		!m.scroll.lastStep.IsZero() && now.Sub(m.scroll.lastStep) < interval {
-		return m, tea.KeyMsg{}, false
+		return m, tea.KeyPressMsg{}, false
 	}
 
 	acc := &m.scroll.vertical
@@ -569,20 +574,20 @@ func (m Model) accumulateScroll(msg tea.MouseMsg, now time.Time) (Model, tea.Key
 	*acc += delta
 
 	if abs(*acc) < m.cfg.UI.TicksPerStep() {
-		return m, tea.KeyMsg{}, false
+		return m, tea.KeyPressMsg{}, false
 	}
 	*acc = 0
 	m.scroll.lastStep = now
 
 	switch {
 	case horizontal && delta < 0:
-		return m, tea.KeyMsg{Type: tea.KeyLeft}, true
+		return m, tea.KeyPressMsg{Code: tea.KeyLeft}, true
 	case horizontal:
-		return m, tea.KeyMsg{Type: tea.KeyRight}, true
+		return m, tea.KeyPressMsg{Code: tea.KeyRight}, true
 	case delta < 0:
-		return m, tea.KeyMsg{Type: tea.KeyUp}, true
+		return m, tea.KeyPressMsg{Code: tea.KeyUp}, true
 	default:
-		return m, tea.KeyMsg{Type: tea.KeyDown}, true
+		return m, tea.KeyPressMsg{Code: tea.KeyDown}, true
 	}
 }
 
@@ -593,7 +598,7 @@ func abs(v int) int {
 	return v
 }
 
-func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	// Overlays get first refusal on every key.
 	switch m.overlay {
 	case overlayForm:
@@ -725,7 +730,21 @@ func (m *Model) rebuild() {
 	m.roadmap.setItems(m.project.Scheduled(), m.now)
 }
 
-func (m Model) View() string {
+// View hands Bubble Tea the frame together with the terminal modes the program
+// wants. v2 made those properties of the view rather than options passed to the
+// program, so they are decided here, once per frame.
+func (m Model) View() tea.View {
+	v := tea.NewView(m.render())
+	v.AltScreen = true
+	if m.cfg.UI.MouseEnabled() {
+		// Cell motion is the lightest mode that still reports wheel events.
+		v.MouseMode = tea.MouseModeCellMotion
+	}
+	return v
+}
+
+// render draws one frame.
+func (m Model) render() string {
 	if m.quitting {
 		return ""
 	}

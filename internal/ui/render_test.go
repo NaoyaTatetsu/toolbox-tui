@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/NaoyaTatetsu/toolbox-tui/internal/config"
@@ -137,7 +137,7 @@ func TestViewsRenderAtManySizes(t *testing.T) {
 		for _, view := range []viewID{viewBoard, viewRoadmap, viewCalendar} {
 			m := newTestModel(sz[0], sz[1])
 			m.view = view
-			out := m.View()
+			out := m.render()
 			lines := strings.Split(out, "\n")
 			if len(lines) > sz[1] {
 				t.Errorf("%v at %dx%d: %d lines, want <= %d", view, sz[0], sz[1], len(lines), sz[1])
@@ -158,7 +158,7 @@ func TestOverlaysRender(t *testing.T) {
 		m := newTestModel(120, 40)
 		m.overlay = o
 		m.detail = detailState{item: m.project.Items[2]}
-		if out := m.View(); out == "" {
+		if out := m.render(); out == "" {
 			t.Errorf("overlay %v rendered empty", o)
 		}
 	}
@@ -169,7 +169,7 @@ func TestOverlaysRender(t *testing.T) {
 	if m.overlay != overlayForm {
 		t.Fatalf("openForm did not open the form overlay")
 	}
-	out := m.View()
+	out := m.render()
 	for _, want := range []string{"New task", "Develop", "In Progress", "High"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("form is missing %q", want)
@@ -278,15 +278,15 @@ func TestDumpFrames(t *testing.T) {
 	for _, view := range []viewID{viewBoard, viewRoadmap, viewCalendar} {
 		m := newTestModel(120, 34)
 		m.view = view
-		fmt.Printf("\n===== %v =====\n%s\n", view, m.View())
+		fmt.Printf("\n===== %v =====\n%s\n", view, m.render())
 	}
 	m := newTestModel(120, 34)
 	tm, _ := m.openForm()
-	fmt.Printf("\n===== form =====\n%s\n", tm.(Model).View())
+	fmt.Printf("\n===== form =====\n%s\n", tm.(Model).render())
 	m2 := newTestModel(120, 34)
 	m2.overlay = overlayDetail
 	m2.detail = detailState{item: m2.project.Items[2]}
-	fmt.Printf("\n===== detail =====\n%s\n", m2.View())
+	fmt.Printf("\n===== detail =====\n%s\n", m2.render())
 }
 
 var _ tea.Model = Model{}
@@ -369,7 +369,7 @@ func TestCalendarEnterOpensTheEvent(t *testing.T) {
 	if m.overlay != overlayEvent {
 		t.Fatalf("enter on the day pane left the overlay at %v", m.overlay)
 	}
-	out := stripANSI(m.View())
+	out := stripANSI(m.render())
 	for _, want := range []string{
 		"1:1 with a very long meeting title",
 		"2026-08-28 (Fri)  14:00–15:00",
@@ -398,7 +398,7 @@ func TestEventDetailShowsTheReplies(t *testing.T) {
 	if m.overlay != overlayEvent {
 		t.Fatalf("the overlay is %v", m.overlay)
 	}
-	out := stripANSI(m.View())
+	out := stripANSI(m.render())
 	for _, want := range []string{
 		"You        ? maybe", // the owner's own PARTSTAT
 		"3 guests  ·  1 going, 1 maybe, 1 not going",
@@ -422,7 +422,7 @@ func TestEventDetailStaysQuietWithoutGuests(t *testing.T) {
 	m := newTestModel(120, 40)
 	m.view = viewCalendar
 	m = press(m, "enter", "down", "enter") // Standup: no attendees in the fixture
-	out := stripANSI(m.View())
+	out := stripANSI(m.render())
 	for _, unwanted := range []string{"You  ", "guest", "no reply", "Rooms"} {
 		if strings.Contains(out, unwanted) {
 			t.Errorf("the overlay invented %q for an event with no guests\n%s", unwanted, out)
@@ -496,7 +496,7 @@ func TestEventWhenSpellsOutTheSpan(t *testing.T) {
 func TestCalendarShowsNoTasks(t *testing.T) {
 	m := newTestModel(120, 40)
 	m.view = viewCalendar
-	out := stripANSI(m.View())
+	out := stripANSI(m.render())
 	// #102 is due Aug 27, #103 runs Aug 26 – Sep 10 and the draft is due Aug 31,
 	// so every one of them falls inside the rendered August grid.
 	for _, task := range []string{"請求書の確認", "quarterly report", "Draft with no issue"} {
@@ -523,7 +523,7 @@ func TestRoadmapHidesDoneTasks(t *testing.T) {
 		t.Errorf("doneHidden = %d, want 1", m.roadmap.doneHidden)
 	}
 	m.view = viewRoadmap
-	if out := stripANSI(m.View()); !strings.Contains(out, "1 done hidden") {
+	if out := stripANSI(m.render()); !strings.Contains(out, "1 done hidden") {
 		t.Errorf("the legend does not mention the hidden task\n%s", out)
 	}
 
@@ -555,7 +555,7 @@ func TestRoadmapSaysWhenEverythingIsDone(t *testing.T) {
 	}
 	m.rebuild()
 	m.view = viewRoadmap
-	out := stripANSI(m.View())
+	out := stripANSI(m.render())
 	if !strings.Contains(out, "every scheduled task is Done") {
 		t.Errorf("the empty roadmap does not say why it is empty\n%s", out)
 	}
@@ -571,24 +571,26 @@ func TestRoadmapOpensOnLiveWork(t *testing.T) {
 	}
 }
 
-func key(s string) tea.KeyMsg {
+func key(s string) tea.KeyPressMsg {
 	switch s {
 	case "left":
-		return tea.KeyMsg{Type: tea.KeyLeft}
+		return tea.KeyPressMsg{Code: tea.KeyLeft}
 	case "right":
-		return tea.KeyMsg{Type: tea.KeyRight}
+		return tea.KeyPressMsg{Code: tea.KeyRight}
 	case "up":
-		return tea.KeyMsg{Type: tea.KeyUp}
+		return tea.KeyPressMsg{Code: tea.KeyUp}
 	case "down":
-		return tea.KeyMsg{Type: tea.KeyDown}
+		return tea.KeyPressMsg{Code: tea.KeyDown}
 	case "tab":
-		return tea.KeyMsg{Type: tea.KeyTab}
+		return tea.KeyPressMsg{Code: tea.KeyTab}
 	case "enter":
-		return tea.KeyMsg{Type: tea.KeyEnter}
+		return tea.KeyPressMsg{Code: tea.KeyEnter}
 	case "esc":
-		return tea.KeyMsg{Type: tea.KeyEsc}
+		return tea.KeyPressMsg{Code: tea.KeyEscape}
 	default:
-		return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)}
+		// A printable key carries its text as well as its code, which is what
+		// the terminal reports and what Key.String reads back.
+		return tea.KeyPressMsg{Code: []rune(s)[0], Text: s}
 	}
 }
 
@@ -724,17 +726,17 @@ func TestFormSwallowsViewKeys(t *testing.T) {
 	}
 }
 
-func wheel(button tea.MouseButton, shift bool) tea.MouseMsg {
-	return tea.MouseMsg(tea.MouseEvent{
-		Action: tea.MouseActionPress,
-		Button: button,
-		Shift:  shift,
-	})
+func wheel(button tea.MouseButton, shift bool) tea.Msg {
+	msg := tea.MouseWheelMsg{Button: button}
+	if shift {
+		msg.Mod = tea.ModShift
+	}
+	return msg
 }
 
 // scroll sends each event enough times to cross the sensitivity threshold, so
 // the tests below read as "one gesture per assertion".
-func scroll(m Model, events ...tea.MouseMsg) Model {
+func scroll(m Model, events ...tea.Msg) Model {
 	for _, e := range events {
 		for i := 0; i < m.cfg.UI.TicksPerStep(); i++ {
 			tm, _ := m.Update(e)
@@ -745,7 +747,7 @@ func scroll(m Model, events ...tea.MouseMsg) Model {
 }
 
 // scrollOnce sends a single wheel event, without completing a step.
-func scrollOnce(m Model, e tea.MouseMsg) Model {
+func scrollOnce(m Model, e tea.Msg) Model {
 	tm, _ := m.Update(e)
 	return tm.(Model)
 }
@@ -753,19 +755,19 @@ func scrollOnce(m Model, e tea.MouseMsg) Model {
 func TestTrackpadScrollMovesInEveryDirection(t *testing.T) {
 	t.Run("board", func(t *testing.T) {
 		m := newTestModel(120, 40)
-		m = scroll(m, wheel(tea.MouseButtonWheelDown, false))
+		m = scroll(m, wheel(tea.MouseWheelDown, false))
 		if m.board.row != 1 {
 			t.Errorf("scroll down: row = %d, want 1", m.board.row)
 		}
-		m = scroll(m, wheel(tea.MouseButtonWheelUp, false))
+		m = scroll(m, wheel(tea.MouseWheelUp, false))
 		if m.board.row != 0 {
 			t.Errorf("scroll up: row = %d, want 0", m.board.row)
 		}
-		m = scroll(m, wheel(tea.MouseButtonWheelRight, false))
+		m = scroll(m, wheel(tea.MouseWheelRight, false))
 		if m.board.col != 1 {
 			t.Errorf("scroll right: col = %d, want 1", m.board.col)
 		}
-		m = scroll(m, wheel(tea.MouseButtonWheelLeft, false))
+		m = scroll(m, wheel(tea.MouseWheelLeft, false))
 		if m.board.col != 0 {
 			t.Errorf("scroll left: col = %d, want 0", m.board.col)
 		}
@@ -773,14 +775,14 @@ func TestTrackpadScrollMovesInEveryDirection(t *testing.T) {
 
 	t.Run("shift is the horizontal fallback", func(t *testing.T) {
 		m := newTestModel(120, 40)
-		m = scroll(m, wheel(tea.MouseButtonWheelDown, true))
+		m = scroll(m, wheel(tea.MouseWheelDown, true))
 		if m.board.col != 1 {
 			t.Errorf("shift+scroll down: col = %d, want 1", m.board.col)
 		}
 		if m.board.row != 0 {
 			t.Errorf("shift+scroll down moved the row to %d", m.board.row)
 		}
-		m = scroll(m, wheel(tea.MouseButtonWheelUp, true))
+		m = scroll(m, wheel(tea.MouseWheelUp, true))
 		if m.board.col != 0 {
 			t.Errorf("shift+scroll up: col = %d, want 0", m.board.col)
 		}
@@ -790,11 +792,11 @@ func TestTrackpadScrollMovesInEveryDirection(t *testing.T) {
 		m := newTestModel(120, 40)
 		m.view = viewCalendar
 		day := m.month.day
-		m = scroll(m, wheel(tea.MouseButtonWheelDown, false))
+		m = scroll(m, wheel(tea.MouseWheelDown, false))
 		if !m.month.day.Equal(day.AddDate(0, 0, 7)) {
 			t.Errorf("scroll down = %v, want one week later", m.month.day)
 		}
-		m = scroll(m, wheel(tea.MouseButtonWheelRight, false))
+		m = scroll(m, wheel(tea.MouseWheelRight, false))
 		if !m.month.day.Equal(day.AddDate(0, 0, 8)) {
 			t.Errorf("scroll right = %v, want one more day", m.month.day)
 		}
@@ -804,11 +806,11 @@ func TestTrackpadScrollMovesInEveryDirection(t *testing.T) {
 		m := newTestModel(120, 40)
 		m.view = viewRoadmap
 		origin, cursor := m.roadmap.origin, m.roadmap.cursor
-		m = scroll(m, wheel(tea.MouseButtonWheelDown, false))
+		m = scroll(m, wheel(tea.MouseWheelDown, false))
 		if m.roadmap.cursor != cursor+1 {
 			t.Errorf("scroll down: cursor = %d, want %d", m.roadmap.cursor, cursor+1)
 		}
-		m = scroll(m, wheel(tea.MouseButtonWheelRight, false))
+		m = scroll(m, wheel(tea.MouseWheelRight, false))
 		if !m.roadmap.origin.After(origin) {
 			t.Errorf("scroll right did not advance the timeline")
 		}
@@ -818,11 +820,11 @@ func TestTrackpadScrollMovesInEveryDirection(t *testing.T) {
 		m := newTestModel(120, 40)
 		m.overlay = overlayDetail
 		m.detail = detailState{item: m.project.Items[2]}
-		m = scroll(m, wheel(tea.MouseButtonWheelDown, false), wheel(tea.MouseButtonWheelDown, false))
+		m = scroll(m, wheel(tea.MouseWheelDown, false), wheel(tea.MouseWheelDown, false))
 		if m.detail.scroll != 2 {
 			t.Errorf("detail scroll = %d, want 2", m.detail.scroll)
 		}
-		m = scroll(m, wheel(tea.MouseButtonWheelUp, false))
+		m = scroll(m, wheel(tea.MouseWheelUp, false))
 		if m.detail.scroll != 1 {
 			t.Errorf("detail scroll = %d, want 1", m.detail.scroll)
 		}
@@ -834,10 +836,10 @@ func TestTrackpadScrollMovesInEveryDirection(t *testing.T) {
 func TestNonWheelMouseEventsAreIgnored(t *testing.T) {
 	m := newTestModel(120, 40)
 	before := m.board
-	for _, button := range []tea.MouseButton{tea.MouseButtonLeft, tea.MouseButtonRight, tea.MouseButtonNone} {
+	for _, button := range []tea.MouseButton{tea.MouseLeft, tea.MouseRight, tea.MouseNone} {
 		m = scroll(m, wheel(button, false))
 	}
-	m = scroll(m, tea.MouseMsg(tea.MouseEvent{Action: tea.MouseActionMotion, Button: tea.MouseButtonNone}))
+	m = scroll(m, tea.MouseMotionMsg{Button: tea.MouseNone})
 	if m.board.col != before.col || m.board.row != before.row {
 		t.Errorf("a non-wheel event moved the cursor to col %d row %d", m.board.col, m.board.row)
 	}
@@ -851,12 +853,12 @@ func TestScrollSensitivity(t *testing.T) {
 	t.Run("partial gestures do not move", func(t *testing.T) {
 		m := newTestModel(120, 40)
 		for i := 0; i < ticks-1; i++ {
-			m = scrollOnce(m, wheel(tea.MouseButtonWheelDown, false))
+			m = scrollOnce(m, wheel(tea.MouseWheelDown, false))
 			if m.board.row != 0 {
 				t.Fatalf("moved after %d of %d ticks", i+1, ticks)
 			}
 		}
-		m = scrollOnce(m, wheel(tea.MouseButtonWheelDown, false))
+		m = scrollOnce(m, wheel(tea.MouseWheelDown, false))
 		if m.board.row != 1 {
 			t.Errorf("did not move on tick %d: row = %d", ticks, m.board.row)
 		}
@@ -864,13 +866,13 @@ func TestScrollSensitivity(t *testing.T) {
 
 	t.Run("the accumulator resets after a step", func(t *testing.T) {
 		m := newTestModel(120, 40)
-		m = scroll(m, wheel(tea.MouseButtonWheelDown, false))
+		m = scroll(m, wheel(tea.MouseWheelDown, false))
 		if m.scroll.vertical != 0 {
 			t.Errorf("accumulator = %d after a completed step, want 0", m.scroll.vertical)
 		}
 		// A second full gesture must take the same number of ticks again.
 		for i := 0; i < ticks-1; i++ {
-			m = scrollOnce(m, wheel(tea.MouseButtonWheelDown, false))
+			m = scrollOnce(m, wheel(tea.MouseWheelDown, false))
 		}
 		if m.board.row != 1 {
 			t.Errorf("second gesture moved early: row = %d", m.board.row)
@@ -880,10 +882,10 @@ func TestScrollSensitivity(t *testing.T) {
 	t.Run("reversing direction abandons the partial count", func(t *testing.T) {
 		m := newTestModel(120, 40)
 		for i := 0; i < ticks-1; i++ {
-			m = scrollOnce(m, wheel(tea.MouseButtonWheelDown, false))
+			m = scrollOnce(m, wheel(tea.MouseWheelDown, false))
 		}
 		// Flicking back the other way should not immediately complete a step.
-		m = scrollOnce(m, wheel(tea.MouseButtonWheelUp, false))
+		m = scrollOnce(m, wheel(tea.MouseWheelUp, false))
 		if m.scroll.vertical != -1 {
 			t.Errorf("accumulator = %d after reversing, want -1", m.scroll.vertical)
 		}
@@ -895,9 +897,9 @@ func TestScrollSensitivity(t *testing.T) {
 	t.Run("changing axis abandons the other partial count", func(t *testing.T) {
 		m := newTestModel(120, 40)
 		for i := 0; i < ticks-1; i++ {
-			m = scrollOnce(m, wheel(tea.MouseButtonWheelDown, false))
+			m = scrollOnce(m, wheel(tea.MouseWheelDown, false))
 		}
-		m = scrollOnce(m, wheel(tea.MouseButtonWheelRight, false))
+		m = scrollOnce(m, wheel(tea.MouseWheelRight, false))
 		if m.scroll.vertical != 0 {
 			t.Errorf("vertical accumulator = %d, want 0", m.scroll.vertical)
 		}
@@ -909,7 +911,7 @@ func TestScrollSensitivity(t *testing.T) {
 	t.Run("scroll_ticks = 1 moves on every event", func(t *testing.T) {
 		m := newTestModel(120, 40)
 		m.cfg.UI.ScrollTicks = 1
-		m = scrollOnce(m, wheel(tea.MouseButtonWheelDown, false))
+		m = scrollOnce(m, wheel(tea.MouseWheelDown, false))
 		if m.board.row != 1 {
 			t.Errorf("row = %d, want 1", m.board.row)
 		}
@@ -928,7 +930,7 @@ func TestScrollCooldownTamesMomentum(t *testing.T) {
 
 	gesture := func() {
 		for i := 0; i < config.DefaultScrollTicks; i++ {
-			m = scrollOnce(m, wheel(tea.MouseButtonWheelDown, false))
+			m = scrollOnce(m, wheel(tea.MouseWheelDown, false))
 		}
 	}
 
@@ -940,7 +942,7 @@ func TestScrollCooldownTamesMomentum(t *testing.T) {
 
 	// A momentum tail of 200 more events, all inside the cooldown, must not move.
 	for i := 0; i < 200; i++ {
-		m = scrollOnce(m, wheel(tea.MouseButtonWheelDown, false))
+		m = scrollOnce(m, wheel(tea.MouseWheelDown, false))
 	}
 	if want := start.AddDate(0, 0, 7); !m.month.day.Equal(want) {
 		t.Errorf("momentum moved the day to %v, want %v", m.month.day, want)
@@ -989,7 +991,7 @@ func TestScrollCapCanBeRemoved(t *testing.T) {
 	m.cfg.UI.ScrollIntervalMS = &zero
 	start := m.month.day
 	for i := 0; i < 3; i++ {
-		m = scrollOnce(m, wheel(tea.MouseButtonWheelDown, false))
+		m = scrollOnce(m, wheel(tea.MouseWheelDown, false))
 	}
 	if want := start.AddDate(0, 0, 21); !m.month.day.Equal(want) {
 		t.Errorf("day = %v, want %v with both limits off", m.month.day, want)
@@ -1037,7 +1039,7 @@ func TestCacheGivesAFirstFrameWithContent(t *testing.T) {
 	if msg := first.loadCache()(); msg.(cacheMsg).project != nil {
 		t.Fatal("nothing should be cached yet")
 	}
-	if out := stripANSI(first.View()); !strings.Contains(out, "loading project") {
+	if out := stripANSI(first.render()); !strings.Contains(out, "loading project") {
 		t.Errorf("cold first frame should say it is loading:\n%s", out)
 	}
 
@@ -1073,7 +1075,7 @@ func TestCacheGivesAFirstFrameWithContent(t *testing.T) {
 	if !second.projectStale || !second.eventsStale {
 		t.Error("cache-sourced data should be marked stale until the network confirms it")
 	}
-	out := stripANSI(second.View())
+	out := stripANSI(second.render())
 	if strings.Contains(out, "loading project") {
 		t.Errorf("cached first frame should show cards:\n%s", out)
 	}
@@ -1219,7 +1221,7 @@ func TestAdjustScrollTakesEffectImmediately(t *testing.T) {
 	}
 	start := m.month.day
 	for i := 0; i < 4; i++ {
-		m = scrollOnce(m, wheel(tea.MouseButtonWheelDown, false))
+		m = scrollOnce(m, wheel(tea.MouseWheelDown, false))
 	}
 	if want := start.AddDate(0, 0, 28); !m.month.day.Equal(want) {
 		t.Errorf("day = %v, want %v — the new sensitivity did not apply", m.month.day, want)
@@ -1228,7 +1230,7 @@ func TestAdjustScrollTakesEffectImmediately(t *testing.T) {
 
 func TestAdjustScrollDiscardsPartialCount(t *testing.T) {
 	m := newTestModel(120, 40)
-	m = scrollOnce(m, wheel(tea.MouseButtonWheelDown, false))
+	m = scrollOnce(m, wheel(tea.MouseWheelDown, false))
 	if m.scroll.vertical == 0 {
 		t.Fatal("expected a partial count to bank")
 	}
@@ -1278,19 +1280,13 @@ func findInFrame(frame, needle string) (x, y int, ok bool) {
 }
 
 func click(m Model, x, y int) Model {
-	msg := tea.MouseMsg(tea.MouseEvent{
-		Action: tea.MouseActionPress,
-		Button: tea.MouseButtonLeft,
-		X:      x,
-		Y:      y,
-	})
-	tm, _ := m.Update(msg)
+	tm, _ := m.Update(tea.MouseClickMsg{Button: tea.MouseLeft, X: x, Y: y})
 	return tm.(Model)
 }
 
 func TestClickSelectsBoardCard(t *testing.T) {
 	m := newTestModel(120, 40)
-	frame := m.View()
+	frame := m.render()
 
 	// Every card the fixture puts on screen must be selectable by clicking its title.
 	for _, want := range []struct{ needle, id string }{
@@ -1320,7 +1316,7 @@ func TestClickSelectsBoardCard(t *testing.T) {
 
 func TestClickOnEmptyBoardAreaChangesNothing(t *testing.T) {
 	m := newTestModel(120, 40)
-	_ = m.View()
+	_ = m.render()
 	before := m.board
 	// Well below the last card in the first column.
 	m = click(m, 3, 38)
@@ -1332,7 +1328,7 @@ func TestClickOnEmptyBoardAreaChangesNothing(t *testing.T) {
 func TestClickSelectsRoadmapRow(t *testing.T) {
 	m := newTestModel(120, 40)
 	m.view = viewRoadmap
-	frame := m.View()
+	frame := m.render()
 
 	for i, item := range m.roadmap.items {
 		needle := item.Title
@@ -1358,7 +1354,7 @@ func TestClickSelectsRoadmapRow(t *testing.T) {
 func TestClickSelectsCalendarDay(t *testing.T) {
 	m := newTestModel(120, 40)
 	m.view = viewCalendar
-	lines := strings.Split(m.View(), "\n")
+	lines := strings.Split(m.render(), "\n")
 
 	var checked int
 	for _, r := range m.hits.regions {
@@ -1400,7 +1396,7 @@ func TestClickSelectsCalendarDay(t *testing.T) {
 func TestClickSelectsOutOfMonthDay(t *testing.T) {
 	m := newTestModel(120, 40)
 	m.view = viewCalendar
-	_ = m.View()
+	_ = m.render()
 
 	var july, september bool
 	for _, r := range m.hits.regions {
@@ -1426,7 +1422,7 @@ func TestClickSelectsOutOfMonthDay(t *testing.T) {
 func TestClickSelectsAgendaEntry(t *testing.T) {
 	m := newTestModel(120, 40)
 	m.view = viewCalendar
-	frame := m.View()
+	frame := m.render()
 
 	// The agenda for Aug 28 lists the all-day trip and the two timed events.
 	entries := m.agenda(m.month.day)
@@ -1451,7 +1447,7 @@ func TestClickSelectsAgendaEntry(t *testing.T) {
 
 func TestClicksAreInertWhileAnOverlayIsOpen(t *testing.T) {
 	m := newTestModel(120, 40)
-	frame := m.View()
+	frame := m.render()
 	x, y, ok := findInFrame(frame, "#105")
 	if !ok {
 		t.Fatal("#105 is not on the frame")
@@ -1462,7 +1458,7 @@ func TestClicksAreInertWhileAnOverlayIsOpen(t *testing.T) {
 		withOverlay := m
 		withOverlay.overlay = overlay
 		withOverlay.detail = detailState{item: m.project.Items[0]}
-		_ = withOverlay.View() // the overlay frame clears the hit map
+		_ = withOverlay.render() // the overlay frame clears the hit map
 		withOverlay = click(withOverlay, x, y)
 		if withOverlay.board.col != before.col || withOverlay.board.row != before.row {
 			t.Errorf("overlay %v let a click through to the board", overlay)
@@ -1477,7 +1473,7 @@ func TestClicksAreInertWhileAnOverlayIsOpen(t *testing.T) {
 // scroll tick.
 func TestClickDoesNotFeedTheScrollAccumulator(t *testing.T) {
 	m := newTestModel(120, 40)
-	_ = m.View()
+	_ = m.render()
 	for i := 0; i < 10; i++ {
 		m = click(m, 3, 4)
 	}

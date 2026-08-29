@@ -6,10 +6,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/bubbles/textarea"
-	"github.com/charmbracelet/bubbles/textinput"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/textarea"
+	"charm.land/bubbles/v2/textinput"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	gh "github.com/NaoyaTatetsu/toolbox-tui/internal/github"
 )
@@ -126,9 +126,9 @@ func (f *formModel) setWidth(w int) {
 	}
 	inner := w - 6
 	f.width = w
-	f.title.Width = inner - 1
-	f.start.Width = inner - 1
-	f.end.Width = inner - 1
+	f.title.SetWidth(inner - 1)
+	f.start.SetWidth(inner - 1)
+	f.end.SetWidth(inner - 1)
 	f.body.SetWidth(inner - 2) // room for the two-space indent in view()
 }
 
@@ -424,7 +424,7 @@ func (f formModel) view() string {
 			[2]string{"esc", "cancel"}))
 	}
 
-	return styOverlay.Width(f.width).Render(b.String())
+	return overlayBox(f.width, b.String())
 }
 
 // labelsView renders the label chips, wrapping onto extra lines as needed and
