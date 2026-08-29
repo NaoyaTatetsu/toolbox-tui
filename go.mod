@@ -1,4 +1,4 @@
-module github.com/NaoyaTatetsu/task-tui
+module github.com/NaoyaTatetsu/toolbox-tui
 
 go 1.24.2
 

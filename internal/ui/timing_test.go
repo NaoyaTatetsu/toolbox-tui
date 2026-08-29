@@ -6,10 +6,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/NaoyaTatetsu/task-tui/internal/cache"
-	"github.com/NaoyaTatetsu/task-tui/internal/config"
-	gh "github.com/NaoyaTatetsu/task-tui/internal/github"
-	googlecalendar "github.com/NaoyaTatetsu/task-tui/internal/google-calendar"
+	"github.com/NaoyaTatetsu/toolbox-tui/internal/cache"
+	"github.com/NaoyaTatetsu/toolbox-tui/internal/config"
+	gh "github.com/NaoyaTatetsu/toolbox-tui/internal/github"
+	googlecalendar "github.com/NaoyaTatetsu/toolbox-tui/internal/google-calendar"
 )
 
 // TestStartupTiming reports how long the first usable frame takes, cold and warm.

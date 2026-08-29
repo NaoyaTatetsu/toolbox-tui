@@ -110,7 +110,7 @@ func (c *Client) fetch(ctx context.Context, feedURL string) ([]byte, error) {
 	if err != nil {
 		return nil, scrubError(feedURL, err)
 	}
-	req.Header.Set("User-Agent", "task-tui")
+	req.Header.Set("User-Agent", "toolbox-tui")
 	resp, err := c.http.Do(req)
 	if err != nil {
 		return nil, scrubError(feedURL, err)

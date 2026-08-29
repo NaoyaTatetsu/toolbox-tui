@@ -8,7 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	gh "github.com/NaoyaTatetsu/task-tui/internal/github"
+	gh "github.com/NaoyaTatetsu/toolbox-tui/internal/github"
 )
 
 // cardHeight is fixed so that scrolling maths stays simple and columns line up
@@ -473,7 +473,7 @@ func (m Model) renderHelp() string {
 		return b.String()
 	}
 	var b strings.Builder
-	b.WriteString(styTitle.Render("task-tui") + "\n\n")
+	b.WriteString(styTitle.Render("toolbox-tui") + "\n\n")
 	b.WriteString(section("Global", [][2]string{
 		{"[ ]", "previous / next view"},
 		{"1 2 3", "Board / Roadmap / Calendar"},

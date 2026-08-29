@@ -51,7 +51,7 @@ func (c *Client) do(ctx context.Context, query string, vars map[string]any, out 
 	}
 	req.Header.Set("Authorization", "Bearer "+c.token)
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", "task-tui")
+	req.Header.Set("User-Agent", "toolbox-tui")
 
 	resp, err := c.http.Do(req)
 	if err != nil {
@@ -111,7 +111,7 @@ func (c *Client) Scopes(ctx context.Context) ([]string, error) {
 		return nil, err
 	}
 	req.Header.Set("Authorization", "Bearer "+c.token)
-	req.Header.Set("User-Agent", "task-tui")
+	req.Header.Set("User-Agent", "toolbox-tui")
 	resp, err := c.http.Do(req)
 	if err != nil {
 		return nil, err

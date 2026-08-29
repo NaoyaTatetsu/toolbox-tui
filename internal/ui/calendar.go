@@ -8,8 +8,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	gh "github.com/NaoyaTatetsu/task-tui/internal/github"
-	googlecalendar "github.com/NaoyaTatetsu/task-tui/internal/google-calendar"
+	gh "github.com/NaoyaTatetsu/toolbox-tui/internal/github"
+	googlecalendar "github.com/NaoyaTatetsu/toolbox-tui/internal/google-calendar"
 )
 
 const (

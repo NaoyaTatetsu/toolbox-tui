@@ -14,14 +14,14 @@ import (
 
 // Dir returns the cache directory, honouring the platform convention.
 func Dir() string {
-	if p := os.Getenv("TASK_TUI_CACHE"); p != "" {
+	if p := os.Getenv("TOOLBOX_TUI_CACHE"); p != "" {
 		return p
 	}
 	base, err := os.UserCacheDir()
 	if err != nil {
-		return filepath.Join(os.TempDir(), "task-tui")
+		return filepath.Join(os.TempDir(), "toolbox-tui")
 	}
-	return filepath.Join(base, "task-tui")
+	return filepath.Join(base, "toolbox-tui")
 }
 
 func path(name string) string { return filepath.Join(Dir(), name+".json") }

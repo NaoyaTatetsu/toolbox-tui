@@ -11,7 +11,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	gh "github.com/NaoyaTatetsu/task-tui/internal/github"
+	gh "github.com/NaoyaTatetsu/toolbox-tui/internal/github"
 )
 
 // Form field order, as traversed by tab.

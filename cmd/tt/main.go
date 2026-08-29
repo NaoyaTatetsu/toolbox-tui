@@ -13,11 +13,11 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/NaoyaTatetsu/task-tui/internal/cache"
-	"github.com/NaoyaTatetsu/task-tui/internal/config"
-	gh "github.com/NaoyaTatetsu/task-tui/internal/github"
-	googlecalendar "github.com/NaoyaTatetsu/task-tui/internal/google-calendar"
-	"github.com/NaoyaTatetsu/task-tui/internal/ui"
+	"github.com/NaoyaTatetsu/toolbox-tui/internal/cache"
+	"github.com/NaoyaTatetsu/toolbox-tui/internal/config"
+	gh "github.com/NaoyaTatetsu/toolbox-tui/internal/github"
+	googlecalendar "github.com/NaoyaTatetsu/toolbox-tui/internal/google-calendar"
+	"github.com/NaoyaTatetsu/toolbox-tui/internal/ui"
 )
 
 const usage = `tt — GitHub Project board + Google Calendar in your terminal
@@ -30,8 +30,8 @@ usage:
   tt version      show the build this binary came from
   tt help         show this message
 
-config: ` + "`$XDG_CONFIG_HOME/task-tui/config.toml`" + ` (override with $TASK_TUI_CONFIG)
-cache:  ` + "`$XDG_CACHE_HOME/task-tui/`" + ` (override with $TASK_TUI_CACHE)
+config: ` + "`$XDG_CONFIG_HOME/toolbox-tui/config.toml`" + ` (override with $TOOLBOX_TUI_CONFIG)
+cache:  ` + "`$XDG_CACHE_HOME/toolbox-tui/`" + ` (override with $TOOLBOX_TUI_CACHE)
 `
 
 func main() {
@@ -90,7 +90,7 @@ func run() error {
 	return err
 }
 
-const starterConfig = `# task-tui configuration
+const starterConfig = `# toolbox-tui configuration
 
 [github]
 # From the project URL: https://github.com/users/<owner>/projects/<number>

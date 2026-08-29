@@ -1,6 +1,7 @@
-# task-tui
+# toolbox-tui
 
 GitHub Project（Projects v2）と Google Calendar をターミナルで扱うタスク管理 TUI。
+コマンド名は `tt`。
 Go + [Bubble Tea](https://github.com/charmbracelet/bubbletea) 製。
 
 - **Board** — Status 列ごとのカンバン。カードの移動でそのまま GitHub の Status を更新
@@ -34,7 +35,7 @@ tt
 ### 1. 設定ファイル
 
 ```sh
-tt init      # ~/.config/task-tui/config.toml を生成
+tt init      # ~/.config/toolbox-tui/config.toml を生成
 ```
 
 ```toml
@@ -222,8 +223,8 @@ mouse = false
 | 情報 | 保存場所 | 権限 | 備考 |
 | --- | --- | --- | --- |
 | GitHub トークン | **このツールは保存しない** | — | 起動ごとに `gh auth token` を実行して取得。実体は `gh` が macOS キーチェーンに保持 |
-| Google Calendar の iCal 非公開 URL | `~/.config/task-tui/config.toml` | `0600` | **平文**。この URL 自体が認証情報 |
-| Issue のタイトル・本文、予定名・場所 | `$XDG_CACHE_HOME/task-tui/*.json` | `0600` | 認証情報は含まない |
+| Google Calendar の iCal 非公開 URL | `~/.config/toolbox-tui/config.toml` | `0600` | **平文**。この URL 自体が認証情報 |
+| Issue のタイトル・本文、予定名・場所 | `$XDG_CACHE_HOME/toolbox-tui/*.json` | `0600` | 認証情報は含まない |
 
 トークンの探索順は `github.token`（config）→ `$GITHUB_TOKEN` / `$GH_TOKEN` →
 `gh auth token`。`github.token` に直接書けば config に平文で残るので、通常は
@@ -262,7 +263,7 @@ Calendar が遅いのは Google 側のレスポンスが遅いため。gzip は�
 (5.0 MB → 437 KB)、`curl` でも同じだけかかる。`cache-control: no-cache, no-store`
 で ETag も返らないので条件付きリクエストも使えない。キャッシュ以外に手が無い。
 
-キャッシュは `$XDG_CACHE_HOME/task-tui/`（macOS では `~/Library/Caches/task-tui/`）。
+キャッシュは `$XDG_CACHE_HOME/toolbox-tui/`（macOS では `~/Library/Caches/toolbox-tui/`）。
 issue のタイトルや予定名が入るので `0600` で書く。おかしくなったら捨てられる。
 
 ```sh
@@ -307,7 +308,7 @@ LIVE=1 go test ./internal/ui -run TestLiveRender -v    # 各ビューを実デ�
 LIVE=1 go test ./internal/ui -run TestStartupTiming -v # 起動時間の内訳
 ```
 
-`LIVE=1` のテストは `~/.config/task-tui/config.toml` を読むので、自分の
+`LIVE=1` のテストは `~/.config/toolbox-tui/config.toml` を読むので、自分の
 プロジェクトに向けて実行することになる。CI では動かない。
 
 ## ライセンス

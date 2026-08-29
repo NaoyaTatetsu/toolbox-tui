@@ -11,9 +11,9 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/NaoyaTatetsu/task-tui/internal/config"
-	gh "github.com/NaoyaTatetsu/task-tui/internal/github"
-	googlecalendar "github.com/NaoyaTatetsu/task-tui/internal/google-calendar"
+	"github.com/NaoyaTatetsu/toolbox-tui/internal/config"
+	gh "github.com/NaoyaTatetsu/toolbox-tui/internal/github"
+	googlecalendar "github.com/NaoyaTatetsu/toolbox-tui/internal/google-calendar"
 )
 
 var testNow = time.Date(2026, 8, 28, 11, 0, 0, 0, time.Local)
@@ -850,7 +850,7 @@ func TestMouseCanBeDisabledInConfig(t *testing.T) {
 // paints real cards off disk instead of a loading screen, then the network
 // response replaces them.
 func TestCacheGivesAFirstFrameWithContent(t *testing.T) {
-	t.Setenv("TASK_TUI_CACHE", t.TempDir())
+	t.Setenv("TOOLBOX_TUI_CACHE", t.TempDir())
 
 	// First run: nothing cached, so the first frame is the loading screen.
 	first := newTestModel(120, 40)

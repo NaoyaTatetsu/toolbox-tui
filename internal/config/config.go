@@ -11,7 +11,7 @@ import (
 	"github.com/BurntSushi/toml"
 )
 
-// Config is the on-disk configuration, loaded from ~/.config/task-tui/config.toml.
+// Config is the on-disk configuration, loaded from ~/.config/toolbox-tui/config.toml.
 type Config struct {
 	GitHub   GitHub   `toml:"github"`
 	Calendar Calendar `toml:"calendar"`
@@ -150,7 +150,7 @@ func (u UI) ScrollInterval() time.Duration {
 
 // Path returns the config file location, honouring XDG_CONFIG_HOME.
 func Path() string {
-	if p := os.Getenv("TASK_TUI_CONFIG"); p != "" {
+	if p := os.Getenv("TOOLBOX_TUI_CONFIG"); p != "" {
 		return p
 	}
 	base := os.Getenv("XDG_CONFIG_HOME")
@@ -161,7 +161,7 @@ func Path() string {
 		}
 		base = filepath.Join(home, ".config")
 	}
-	return filepath.Join(base, "task-tui", "config.toml")
+	return filepath.Join(base, "toolbox-tui", "config.toml")
 }
 
 // Load reads the config file and applies defaults. A missing file is an error

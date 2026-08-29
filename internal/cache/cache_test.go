@@ -15,7 +15,7 @@ type payload struct {
 }
 
 func TestSaveLoadRoundTrip(t *testing.T) {
-	t.Setenv("TASK_TUI_CACHE", t.TempDir())
+	t.Setenv("TOOLBOX_TUI_CACHE", t.TempDir())
 	when := time.Date(2026, 8, 29, 10, 0, 0, 0, time.Local)
 	in := payload{Name: "改修", When: when, Maybe: &when, Extra: map[string]string{"k": "v"}}
 	if err := Save("thing", in); err != nil {
@@ -39,7 +39,7 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 
 func TestLoadMissingAndCorrupt(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("TASK_TUI_CACHE", dir)
+	t.Setenv("TOOLBOX_TUI_CACHE", dir)
 
 	var out payload
 	if _, err := Load("absent", &out); err != ErrMissing {
@@ -56,7 +56,7 @@ func TestLoadMissingAndCorrupt(t *testing.T) {
 
 func TestSavePermissionsAndAtomicity(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("TASK_TUI_CACHE", dir)
+	t.Setenv("TOOLBOX_TUI_CACHE", dir)
 	if err := Save("secret", payload{Name: "x"}); err != nil {
 		t.Fatal(err)
 	}
@@ -82,7 +82,7 @@ func TestSavePermissionsAndAtomicity(t *testing.T) {
 }
 
 func TestClear(t *testing.T) {
-	t.Setenv("TASK_TUI_CACHE", t.TempDir())
+	t.Setenv("TOOLBOX_TUI_CACHE", t.TempDir())
 	if err := Save("a", payload{Name: "a"}); err != nil {
 		t.Fatal(err)
 	}
