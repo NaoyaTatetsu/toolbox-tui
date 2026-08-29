@@ -2,7 +2,7 @@
 
 GitHub Project（Projects v2）と Google Calendar をターミナルで扱うタスク管理 TUI。
 コマンド名は `tt`。
-Go + [Bubble Tea](https://github.com/charmbracelet/bubbletea) 製。
+Go + [Bubble Tea](https://github.com/charmbracelet/bubbletea) v2 製。
 
 - **Board** — Status 列ごとのカンバン。カードの移動でそのまま GitHub の Status を更新
 - **Roadmap** — Start Date / End Date のガントチャート。ズームとスクロール対応。Status が Done のタスクは表示しない
@@ -369,4 +369,5 @@ auto-merge に任せたい場合は `platformAutomerge` を `true` にし、`dev
 ## ライセンス
 
 MIT。直接依存（bubbletea / lipgloss / bubbles / x/ansi / rrule-go /
-BurntSushi/toml）はすべて MIT。
+BurntSushi/toml）はすべて MIT。Charm の 3 つは v2 でモジュールパスが
+`charm.land/…/v2` に移っている。

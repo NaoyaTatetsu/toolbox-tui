@@ -1,49 +1,74 @@
 package ui
 
 import (
+	"image/color"
 	"strings"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 )
+
+// darkBackground records what the terminal said about its own background.
+// lipgloss v1 asked the terminal itself; v2 leaves the question to the program,
+// which learns the answer from a tea.BackgroundColorMsg on start-up. Dark is
+// the assumption until then, being the common case, and the wrong guess costs
+// one frame.
+var darkBackground = true
+
+// adaptive is a colour with a value for each kind of terminal. It resolves when
+// a style renders, so the palette can be package-level even though the answer
+// arrives after start-up.
+type adaptive struct{ light, dark color.Color }
+
+func (a adaptive) RGBA() (r, g, b, alpha uint32) {
+	if darkBackground {
+		return a.dark.RGBA()
+	}
+	return a.light.RGBA()
+}
+
+// pair builds an adaptive colour from two hex strings.
+func pair(light, dark string) adaptive {
+	return adaptive{light: lipgloss.Color(light), dark: lipgloss.Color(dark)}
+}
 
 // Palette. Colours are adaptive so the TUI stays legible on light and dark
 // terminals without asking the user to configure anything.
 var (
-	colAccent  = lipgloss.AdaptiveColor{Light: "#3b5bdb", Dark: "#7aa2f7"}
-	colMuted   = lipgloss.AdaptiveColor{Light: "#868e96", Dark: "#6c7086"}
-	colFg      = lipgloss.AdaptiveColor{Light: "#1e1e2e", Dark: "#cdd6f4"}
-	colSubtle  = lipgloss.AdaptiveColor{Light: "#495057", Dark: "#9399b2"}
-	colDanger  = lipgloss.AdaptiveColor{Light: "#c92a2a", Dark: "#f38ba8"}
-	colWarn    = lipgloss.AdaptiveColor{Light: "#e8590c", Dark: "#fab387"}
-	colOK      = lipgloss.AdaptiveColor{Light: "#2b8a3e", Dark: "#a6e3a1"}
-	colBorder  = lipgloss.AdaptiveColor{Light: "#ced4da", Dark: "#45475a"}
-	colSelBG   = lipgloss.AdaptiveColor{Light: "#dbe4ff", Dark: "#2a2b3c"}
-	colTodayBG = lipgloss.AdaptiveColor{Light: "#fff3bf", Dark: "#3a3a2e"}
+	colAccent  = pair("#3b5bdb", "#7aa2f7")
+	colMuted   = pair("#868e96", "#6c7086")
+	colFg      = pair("#1e1e2e", "#cdd6f4")
+	colSubtle  = pair("#495057", "#9399b2")
+	colDanger  = pair("#c92a2a", "#f38ba8")
+	colWarn    = pair("#e8590c", "#fab387")
+	colOK      = pair("#2b8a3e", "#a6e3a1")
+	colBorder  = pair("#ced4da", "#45475a")
+	colSelBG   = pair("#dbe4ff", "#2a2b3c")
+	colTodayBG = pair("#fff3bf", "#3a3a2e")
 
 	// Weekend columns of the calendar, following the convention of a Japanese
 	// wall calendar: Sunday in red, Saturday in blue.
-	colSunday   = lipgloss.AdaptiveColor{Light: "#c92a2a", Dark: "#f38ba8"}
-	colSaturday = lipgloss.AdaptiveColor{Light: "#1971c2", Dark: "#89b4fa"}
+	colSunday   = pair("#c92a2a", "#f38ba8")
+	colSaturday = pair("#1971c2", "#89b4fa")
 )
 
 // ghColor maps GitHub's single-select palette names onto terminal colours.
-func ghColor(name string) lipgloss.TerminalColor {
+func ghColor(name string) color.Color {
 	switch strings.ToUpper(name) {
 	case "RED":
-		return lipgloss.AdaptiveColor{Light: "#c92a2a", Dark: "#f38ba8"}
+		return pair("#c92a2a", "#f38ba8")
 	case "ORANGE":
-		return lipgloss.AdaptiveColor{Light: "#e8590c", Dark: "#fab387"}
+		return pair("#e8590c", "#fab387")
 	case "YELLOW":
-		return lipgloss.AdaptiveColor{Light: "#e67700", Dark: "#f9e2af"}
+		return pair("#e67700", "#f9e2af")
 	case "GREEN":
-		return lipgloss.AdaptiveColor{Light: "#2b8a3e", Dark: "#a6e3a1"}
+		return pair("#2b8a3e", "#a6e3a1")
 	case "BLUE":
-		return lipgloss.AdaptiveColor{Light: "#1971c2", Dark: "#89b4fa"}
+		return pair("#1971c2", "#89b4fa")
 	case "PURPLE":
-		return lipgloss.AdaptiveColor{Light: "#6741d9", Dark: "#cba6f7"}
+		return pair("#6741d9", "#cba6f7")
 	case "PINK":
-		return lipgloss.AdaptiveColor{Light: "#c2255c", Dark: "#f5c2e7"}
+		return pair("#c2255c", "#f5c2e7")
 	case "GRAY", "GREY":
 		return colMuted
 	default:
@@ -53,7 +78,7 @@ func ghColor(name string) lipgloss.TerminalColor {
 
 // hexColor turns a GitHub label colour ("5319e7", no '#') into a terminal
 // colour, falling back to the muted grey when it is missing or malformed.
-func hexColor(hex string) lipgloss.TerminalColor {
+func hexColor(hex string) color.Color {
 	hex = strings.TrimPrefix(strings.TrimSpace(hex), "#")
 	if len(hex) != 6 {
 		return colMuted
@@ -67,7 +92,7 @@ func hexColor(hex string) lipgloss.TerminalColor {
 }
 
 // priorityColor keeps High/Middle/Low visually consistent across every view.
-func priorityColor(p string) lipgloss.TerminalColor {
+func priorityColor(p string) color.Color {
 	switch strings.ToLower(p) {
 	case "high", "urgent", "p0":
 		return colDanger
@@ -98,6 +123,13 @@ var (
 	styCardSel  = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(colAccent).Padding(0, 1)
 	styFieldLbl = lipgloss.NewStyle().Foreground(colMuted).Width(11)
 )
+
+// overlayBox renders a panel whose padded interior is width cells across.
+// lipgloss v2 counts the border inside Width, so the two border columns are
+// added back here rather than at each of the four call sites.
+func overlayBox(width int, body string) string {
+	return styOverlay.Width(width + 2).Render(body)
+}
 
 // truncate shortens text to width cells, appending an ellipsis. It is
 // grapheme- and East-Asian-width aware, which matters for Japanese titles.

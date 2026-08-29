@@ -64,7 +64,7 @@ func TestStartupTiming(t *testing.T) {
 		msg := warm.loadCache()()
 		tm, _ := warm.Update(msg)
 		warm = tm.(Model)
-		_ = warm.View()
+		_ = warm.render()
 	})
 	if warm.project == nil {
 		t.Fatal("warm start did not restore the project")

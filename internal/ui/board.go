@@ -5,8 +5,8 @@ import (
 	"strings"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	gh "github.com/NaoyaTatetsu/toolbox-tui/internal/github"
 )
@@ -289,10 +289,10 @@ func (m Model) renderCard(it gh.Item, width int, selected bool) string {
 		style = styCardSel
 	}
 	// The card is one cell narrower than its column, which is what creates the
-	// gutter between lanes. Width() covers content plus padding, borders sit
-	// outside it, so the text area is another 2 cells in.
-	boxW := max(6, width-3)
-	inner := max(4, boxW-2)
+	// gutter between lanes. Width() is the whole card in lipgloss v2, borders
+	// included, so the text area is four cells in: two borders and two pads.
+	boxW := max(8, width-1)
+	inner := max(4, boxW-4)
 
 	title := it.Title
 	if it.Number > 0 {
@@ -420,7 +420,7 @@ func (m Model) renderDetail() string {
 	}
 	b.WriteString(keyHint([2]string{"↑↓", "scroll"}, [2]string{"o", "open in browser"}, [2]string{"esc", "close"}))
 
-	return styOverlay.Width(w).Render(b.String())
+	return overlayBox(w, b.String())
 }
 
 // wrapLines hard-wraps text to width cells, preserving paragraph breaks.
@@ -516,5 +516,5 @@ func (m Model) renderHelp() string {
 		{"esc ←", "back to the grid"},
 	}))
 	b.WriteString("\n" + styMuted.Render("press any key to close"))
-	return styOverlay.Width(w).Render(b.String())
+	return overlayBox(w, b.String())
 }
