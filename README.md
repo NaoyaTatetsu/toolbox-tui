@@ -6,7 +6,7 @@ Go + [Bubble Tea](https://github.com/charmbracelet/bubbletea) 製。
 
 - **Board** — Status 列ごとのカンバン。カードの移動でそのまま GitHub の Status を更新
 - **Roadmap** — Start Date / End Date のガントチャート。ズームとスクロール対応
-- **Calendar** — 月グリッド + 日別アジェンダ。Google Calendar の予定だけを表示（タスクは Board / Roadmap 側）
+- **Calendar** — 月グリッド + 日別アジェンダ。Google Calendar の予定だけを表示（タスクは Board / Roadmap 側）。詳細では自分の出欠・ゲストの回答・会議リンクまで確認できる
 - **タスク登録** — タイトル / 内容 / ラベル / 期日 / 優先度 を入力して Issue を作成し、Project に追加してフィールドを設定
 
 ## インストール
@@ -57,6 +57,7 @@ scroll_interval_ms = 60    # ステップ間の最小間隔（ミリ秒）
 name  = "personal"
 url   = "https://calendar.google.com/calendar/ical/…/private-…/basic.ics"
 color = "#7aa2f7"
+# email = "me@example.com"  # 出欠を「自分の回答」として扱うアドレス。既定は URL 内のカレンダー ID
 ```
 
 `default_repo` は必須ではないが、**ラベルは Issue にしか付けられない**ため、
@@ -78,6 +79,10 @@ gh auth refresh -s project,read:project,repo
 Google Calendar の「設定 → 対象のカレンダー → **iCal 形式の非公開 URL**」をコピーして
 `[[calendar.sources]]` に貼る。カレンダーごとにブロックを繰り返せば複数表示できる。
 この URL は秘密情報なので、設定ファイルは `0600` で作成される。
+
+予定の詳細に出る「自分の出欠」は、URL に含まれるカレンダー ID（＝自分のアドレス）と
+ゲストのアドレスを突き合わせて判定する。他人のカレンダーを購読していて自分の回答を
+見たい場合は `email` に自分のアドレスを書く。
 
 ### 4. 動作確認
 
@@ -131,13 +136,26 @@ tt doctor
 
 ### Calendar
 
+月グリッドと日別アジェンダの 2 ペインからなり、矢印キーの意味はフォーカスのある方で決まる。
+アジェンダにフォーカスがあるときは、見出しの下の罫線がアクセント色になる。
+
+**月グリッド**
+
 | キー | 動作 |
 | --- | --- |
 | `←` `→` | 前日 / 翌日 |
 | `↑` `↓` | 前週 / 翌週 |
 | `H` `L` | 前月 / 翌月 |
-| `J` `K` | アジェンダ内の選択（`shift+↓` `shift+↑` も同じ） |
 | `t` | 今日へ |
+| `enter` | その日のアジェンダへ移動（`J` `K` も同じ） |
+
+**アジェンダ**
+
+| キー | 動作 |
+| --- | --- |
+| `↑` `↓` | 前 / 次の予定（`J` `K` `shift+↓` `shift+↑` も同じ） |
+| `enter` | 選択中の予定の詳細 |
+| `esc` `←` | 月グリッドへ戻る |
 
 ### タスク登録フォーム
 
@@ -156,11 +174,30 @@ tt doctor
 
 ### 詳細表示
 
+タスク（Board / Roadmap）と予定（Calendar）で開ける。
+
 | キー | 動作 |
 | --- | --- |
 | `↑` `↓` | 本文をスクロール |
-| `o` | ブラウザで開く |
+| `o` | ブラウザで開く（タスクは GitHub、予定は会議リンク） |
 | `esc` | 閉じる |
+
+予定の詳細に出る項目は、フィードに入っているものだけ。
+
+| 項目 | 由来 |
+| --- | --- |
+| 見出し下 | カレンダー名、`STATUS:TENTATIVE`（仮）、`TRANSP:TRANSPARENT`（予定なしとして表示） |
+| When | 開始 / 終了。終日は期間表示 |
+| Repeats | `RRULE` を読める形にしたもの（例: `every week on Fri`） |
+| Where | `LOCATION` |
+| Call | `X-GOOGLE-CONFERENCE`（Google Meet のリンク） |
+| You | 自分の出欠 — `✓ going` / `✗ not going` / `? maybe` / `· no reply` |
+| Organizer | `ORGANIZER` |
+| Rooms | `CUTYPE=RESOURCE` のゲスト（会議室） |
+| Guests | 人数と回答の内訳、各ゲストの出欠 |
+| 本文 | `DESCRIPTION` |
+
+ゲストのいない予定（自分だけの予定）は、フィードに `ATTENDEE` が無いため出欠の行も出ない。
 
 ### トラックパッド / マウス
 
@@ -177,7 +214,7 @@ tt doctor
 | --- | --- |
 | Board | カード |
 | Roadmap | タスクの行 |
-| Calendar | 月グリッドの日付セル（前後の月の日付も可）、アジェンダの行 |
+| Calendar | 月グリッドの日付セル（前後の月の日付も可）、アジェンダの行。クリックしたペインにフォーカスが移る |
 
 オーバーレイ（詳細・フォーム・ヘルプ）が開いている間はクリックは無効。
 

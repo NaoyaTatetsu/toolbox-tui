@@ -43,7 +43,8 @@ type overlayID int
 const (
 	overlayNone overlayID = iota
 	overlayHelp
-	overlayDetail
+	overlayDetail // a task, from the board or the roadmap
+	overlayEvent  // a calendar event, from the agenda
 	overlayForm
 )
 
@@ -82,6 +83,7 @@ type Model struct {
 	overlay overlayID
 	form    formModel
 	detail  detailState
+	event   eventState
 	scroll  scrollState
 
 	pending int // outstanding async loads
@@ -249,7 +251,7 @@ func (m Model) loadEvents() tea.Cmd {
 		if name == "" {
 			name = "calendar"
 		}
-		sources = append(sources, googlecalendar.Source{Name: name, URL: s.URL, Color: s.Color})
+		sources = append(sources, googlecalendar.Source{Name: name, URL: s.URL, Color: s.Color, Email: s.Email})
 	}
 	if len(sources) == 0 {
 		return nil
@@ -494,10 +496,10 @@ func (m Model) handleClick(x, y int) (tea.Model, tea.Cmd) {
 	case hitRoadmapRow:
 		m.roadmap.cursor = clamp(region.index, 0, max(0, len(m.roadmap.items)-1))
 	case hitCalendarDay:
-		m.month.day = region.day
-		m.month.agenda = 0
+		m.month.moveTo(region.day)
 	case hitAgendaEntry:
 		m.month.agenda = region.index
+		m.month.focus = focusAgenda
 	}
 	return m, nil
 }
@@ -609,6 +611,26 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "up":
 			if m.detail.scroll > 0 {
 				m.detail.scroll--
+			}
+			return m, nil
+		}
+		return m, nil
+	case overlayEvent:
+		switch msg.String() {
+		case "esc", "q", "enter":
+			m.overlay = overlayNone
+			return m, nil
+		case "o":
+			if link := eventLink(m.event.event); link != "" {
+				return m, openURL(link)
+			}
+			return m, nil
+		case "down":
+			m.event.scroll++
+			return m, nil
+		case "up":
+			if m.event.scroll > 0 {
+				m.event.scroll--
 			}
 			return m, nil
 		}
@@ -745,6 +767,9 @@ func (m Model) View() string {
 	if m.overlay == overlayDetail {
 		return m.overlayOn(screen, m.renderDetail())
 	}
+	if m.overlay == overlayEvent {
+		return m.overlayOn(screen, m.renderEventDetail())
+	}
 	if m.overlay == overlayForm {
 		return m.overlayOn(screen, m.form.view())
 	}
@@ -812,9 +837,15 @@ func (m Model) renderFooter() string {
 			[2]string{"←→", "scroll"}, [2]string{"-+", "zoom"}, [2]string{"t", "today"},
 			[2]string{"enter", "detail"}, [2]string{"?", "help"})
 	default:
+		if m.month.focus == focusAgenda {
+			hints = keyHint([2]string{"[]", "view"}, [2]string{"↑↓", "select"},
+				[2]string{"enter", "detail"}, [2]string{"esc", "back to the grid"},
+				[2]string{"?", "help"})
+			break
+		}
 		hints = keyHint([2]string{"[]", "view"}, [2]string{"←↑↓→", "day/week"},
 			[2]string{"HL", "month"}, [2]string{"t", "today"},
-			[2]string{"JK", "agenda"}, [2]string{"?", "help"})
+			[2]string{"enter", "open the day"}, [2]string{"?", "help"})
 	}
 
 	status := ""

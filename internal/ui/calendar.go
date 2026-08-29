@@ -22,9 +22,19 @@ const (
 	minSplitCell = 6
 )
 
+// The calendar has two panes, and the arrow keys mean different things in
+// each: stepping between days in the grid, between entries in the day pane.
+type calendarFocus int
+
+const (
+	focusGrid calendarFocus = iota
+	focusAgenda
+)
+
 type calendarState struct {
 	day    time.Time // the selected day, at local midnight
 	agenda int       // cursor within the selected day's agenda
+	focus  calendarFocus
 }
 
 func newCalendarState(now time.Time) calendarState {
@@ -33,36 +43,68 @@ func newCalendarState(now time.Time) calendarState {
 
 func (m Model) updateCalendar(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	c := &m.month
+	// The day pane owns the arrow keys while it has the focus. Anything it does
+	// not claim falls through to the grid, which takes the focus back with it.
+	if c.focus == focusAgenda {
+		switch msg.String() {
+		case "up", "K", "shift+up":
+			c.agenda = max(0, c.agenda-1)
+			return m, nil
+		case "down", "J", "shift+down":
+			c.agenda = min(c.agenda+1, max(0, len(m.agenda(c.day))-1))
+			return m, nil
+		case "enter":
+			if ev, ok := m.selectedEvent(); ok {
+				m.event = eventState{event: ev}
+				m.overlay = overlayEvent
+			}
+			return m, nil
+		case "esc", "left":
+			c.focus = focusGrid
+			return m, nil
+		}
+	}
+
 	switch msg.String() {
 	case "left":
-		c.day = c.day.AddDate(0, 0, -1)
-		c.agenda = 0
+		c.moveTo(c.day.AddDate(0, 0, -1))
 	case "right":
-		c.day = c.day.AddDate(0, 0, 1)
-		c.agenda = 0
+		c.moveTo(c.day.AddDate(0, 0, 1))
 	case "up":
-		c.day = c.day.AddDate(0, 0, -7)
-		c.agenda = 0
+		c.moveTo(c.day.AddDate(0, 0, -7))
 	case "down":
-		c.day = c.day.AddDate(0, 0, 7)
-		c.agenda = 0
+		c.moveTo(c.day.AddDate(0, 0, 7))
 	case "H", "pgup":
-		c.day = c.day.AddDate(0, -1, 0)
-		c.agenda = 0
+		c.moveTo(c.day.AddDate(0, -1, 0))
 	case "L", "pgdown":
-		c.day = c.day.AddDate(0, 1, 0)
-		c.agenda = 0
+		c.moveTo(c.day.AddDate(0, 1, 0))
 	case "t":
-		c.day = startOfDay(m.now)
-		c.agenda = 0
-	case "J", "shift+down":
-		c.agenda++
-	case "K", "shift+up":
-		if c.agenda > 0 {
-			c.agenda--
+		c.moveTo(startOfDay(m.now))
+	case "enter", "J", "K", "shift+down", "shift+up":
+		// Into the day pane, where the arrow keys walk the entries and enter
+		// opens the one under the cursor.
+		if len(m.agenda(c.day)) > 0 {
+			c.focus = focusAgenda
 		}
 	}
 	return m, nil
+}
+
+// moveTo selects another day, which resets the day pane and hands the focus
+// back to the grid.
+func (c *calendarState) moveTo(day time.Time) {
+	c.day = day
+	c.agenda = 0
+	c.focus = focusGrid
+}
+
+// selectedEvent is the agenda row the cursor sits on, if the day has one.
+func (m Model) selectedEvent() (googlecalendar.Event, bool) {
+	events := m.agenda(m.month.day)
+	if len(events) == 0 {
+		return googlecalendar.Event{}, false
+	}
+	return events[clamp(m.month.agenda, 0, len(events)-1)], true
 }
 
 // agenda collects the events happening on the selected day. Tasks are
@@ -294,6 +336,9 @@ func eventSummary(e googlecalendar.Event, width int) string {
 func (m Model) renderAgenda(width, height, originX, originY int) string {
 	day := m.month.day
 	events := m.agenda(day)
+	// The rule under the title doubles as the focus cue: the pane owns the
+	// arrow keys exactly when it is drawn in the accent colour.
+	focused := m.month.focus == focusAgenda
 
 	var b strings.Builder
 	title := day.Format("2006-01-02 (Mon)")
@@ -302,7 +347,11 @@ func (m Model) renderAgenda(width, height, originX, originY int) string {
 	}
 	b.WriteString(lipgloss.NewStyle().Bold(true).Foreground(weekdayColor(day.Weekday())).
 		Render(truncate(title, width)) + "\n")
-	b.WriteString(styMuted.Render(strings.Repeat("─", max(1, width-1))) + "\n")
+	rule := styMuted
+	if focused {
+		rule = styAccent
+	}
+	b.WriteString(rule.Render(strings.Repeat("─", max(1, width-1))) + "\n")
 
 	if len(events) == 0 {
 		b.WriteString(styMuted.Render("nothing scheduled"))
@@ -318,12 +367,13 @@ func (m Model) renderAgenda(width, height, originX, originY int) string {
 	for i := start; i < len(events) && i < start+rows; i++ {
 		ev := events[i]
 		entryTop := lineY
-		marker := "  "
-		if i == cursor {
+		marker, summary := "  ", lipgloss.NewStyle()
+		if i == cursor && focused {
 			marker = styAccent.Render("▸ ")
+			summary = summary.Bold(true)
 		}
 		timeCol := stySubtle.Render(pad(ev.TimeLabel(), 12))
-		b.WriteString(marker + timeCol + truncate(ev.Summary, max(4, width-15)) + "\n")
+		b.WriteString(marker + timeCol + summary.Render(truncate(ev.Summary, max(4, width-15))) + "\n")
 		lineY++
 		if ev.Location != "" && width > 34 {
 			b.WriteString(styMuted.Render("    "+truncate(ev.Location, width-6)) + "\n")
@@ -335,10 +385,191 @@ func (m Model) renderAgenda(width, height, originX, originY int) string {
 		})
 	}
 
-	if len(events) > rows {
-		b.WriteString(styMuted.Render(fmt.Sprintf("%d/%d  (J/K to scroll)", cursor+1, len(events))))
-	} else {
-		b.WriteString(styMuted.Render(keyHint([2]string{"J/K", "select"})))
+	// The footer spells the bindings out in full; this line only has room for
+	// the one that matters here, and must not wrap over the month grid.
+	var hint string
+	switch {
+	case len(events) > rows:
+		hint = styMuted.Render(fmt.Sprintf("%d/%d  (↑/↓ to scroll)", cursor+1, len(events)))
+	case focused:
+		hint = keyHint([2]string{"enter", "detail"}, [2]string{"esc", "grid"})
+	default:
+		hint = keyHint([2]string{"enter", "open this day"})
 	}
+	b.WriteString(truncate(hint, max(4, width-1)))
 	return b.String()
+}
+
+// ---- event overlay ----
+
+type eventState struct {
+	event  googlecalendar.Event
+	scroll int
+}
+
+// eventWhen spells an event's span out in full for the detail overlay. All-day
+// events carry iCalendar's exclusive end, so the last day they cover is the day
+// before End.
+func eventWhen(e googlecalendar.Event) string {
+	const dayFmt = "2006-01-02 (Mon)"
+	if e.AllDay {
+		last := e.End.AddDate(0, 0, -1)
+		if !last.After(e.Start) {
+			return e.Start.Format(dayFmt) + "  all-day"
+		}
+		return e.Start.Format(dayFmt) + " – " + last.Format(dayFmt) + "  all-day"
+	}
+	switch {
+	case !e.End.After(e.Start):
+		return e.Start.Format(dayFmt + "  15:04")
+	case sameDay(e.Start, e.End):
+		return e.Start.Format(dayFmt+"  15:04") + "–" + e.End.Format("15:04")
+	default:
+		return e.Start.Format(dayFmt+"  15:04") + " – " + e.End.Format(dayFmt+"  15:04")
+	}
+}
+
+// rsvpParts renders an iCalendar PARTSTAT as a glyph, a phrase, and a colour.
+// An empty reply means the feed never said who is who, which is not the same
+// as an invitation nobody has answered.
+func rsvpParts(status string) (glyph, phrase string, col lipgloss.TerminalColor) {
+	switch strings.ToUpper(status) {
+	case "ACCEPTED":
+		return "✓", "going", colOK
+	case "DECLINED":
+		return "✗", "not going", colDanger
+	case "TENTATIVE":
+		return "?", "maybe", colWarn
+	case "NEEDS-ACTION":
+		return "·", "no reply", colMuted
+	}
+	return "", "", colMuted
+}
+
+// guestSummary counts the replies for the header of the guest list.
+func guestSummary(e googlecalendar.Event) string {
+	going, maybe, declined, noReply := e.Guests()
+	total := going + maybe + declined + noReply
+	if total == 0 {
+		return ""
+	}
+	label := fmt.Sprintf("%d guests", total)
+	if total == 1 {
+		label = "1 guest"
+	}
+	var parts []string
+	for _, p := range [][2]any{{going, "going"}, {maybe, "maybe"},
+		{declined, "not going"}, {noReply, "no reply"}} {
+		if n := p[0].(int); n > 0 {
+			parts = append(parts, fmt.Sprintf("%d %s", n, p[1]))
+		}
+	}
+	return label + "  ·  " + strings.Join(parts, ", ")
+}
+
+// eventLink is the address `o` opens: the meeting link when there is one, the
+// event's own URL otherwise.
+func eventLink(e googlecalendar.Event) string {
+	if e.Conference != "" {
+		return e.Conference
+	}
+	return e.URL
+}
+
+func (m Model) renderEventDetail() string {
+	ev := m.event.event
+	w := clamp(m.width-10, 40, 90)
+	inner := w - 6
+
+	var b strings.Builder
+	b.WriteString(styTitle.Render(truncate(ev.Summary, inner)) + "\n")
+	// The subtitle carries what the calendar itself says about the event, as
+	// opposed to what is in it.
+	sub := []string{ev.Calendar}
+	if strings.EqualFold(ev.Status, "TENTATIVE") {
+		sub = append(sub, "tentative")
+	}
+	if ev.Transparent {
+		sub = append(sub, "shows as free")
+	}
+	b.WriteString(styMuted.Render(truncate(strings.Join(sub, "  ·  "), inner)) + "\n")
+	b.WriteString(styMuted.Render(strings.Repeat("─", inner)) + "\n")
+
+	field := func(label, value string, style lipgloss.Style) {
+		if strings.TrimSpace(value) == "" {
+			return
+		}
+		b.WriteString(styFieldLbl.Render(label) + style.Render(truncate(value, inner-11)) + "\n")
+	}
+	field("When", eventWhen(ev), stySubtle)
+	field("Repeats", ev.Repeat, stySubtle)
+	field("Where", ev.Location, stySubtle)
+	field("Call", ev.Conference, styAccent)
+	if glyph, phrase, col := rsvpParts(ev.MyStatus); phrase != "" {
+		field("You", glyph+" "+phrase, lipgloss.NewStyle().Foreground(col).Bold(true))
+	}
+	field("Organizer", ev.Organizer.Label(), stySubtle)
+	var rooms []string
+	for _, a := range ev.Attendees {
+		if a.Resource {
+			rooms = append(rooms, a.Label())
+		}
+	}
+	field("Rooms", strings.Join(rooms, ", "), stySubtle)
+
+	if summary := guestSummary(ev); summary != "" {
+		b.WriteString(styMuted.Render(strings.Repeat("─", inner)) + "\n")
+		b.WriteString(styFieldLbl.Render("Guests") + stySubtle.Render(truncate(summary, inner-11)) + "\n")
+		// The list gives way to the description when the terminal is short.
+		room := clamp(m.height-20, 2, 10)
+		var shown, hidden int
+		for _, a := range ev.Attendees {
+			if a.Resource {
+				continue
+			}
+			if shown >= room {
+				hidden++
+				continue
+			}
+			glyph, _, col := rsvpParts(a.Status)
+			if glyph == "" {
+				glyph = "·"
+			}
+			name := a.Label()
+			switch {
+			case a.Self:
+				name += "  (you)"
+			case ev.Organizer.Email != "" && strings.EqualFold(a.Email, ev.Organizer.Email):
+				name += "  (organizer)"
+			}
+			b.WriteString("  " + lipgloss.NewStyle().Foreground(col).Render(glyph) + " " +
+				stySubtle.Render(truncate(name, inner-4)) + "\n")
+			shown++
+		}
+		if hidden > 0 {
+			b.WriteString(styMuted.Render(fmt.Sprintf("  … and %d more", hidden)) + "\n")
+		}
+	}
+
+	if desc := strings.TrimSpace(ev.Description); desc != "" {
+		b.WriteString(styMuted.Render(strings.Repeat("─", inner)) + "\n")
+		maxLines := clamp(m.height-22, 3, 20)
+		lines := wrapLines(desc, inner)
+		start := clamp(m.event.scroll, 0, max(0, len(lines)-maxLines))
+		for i := start; i < len(lines) && i < start+maxLines; i++ {
+			b.WriteString(stySubtle.Render(lines[i]) + "\n")
+		}
+		if len(lines) > maxLines {
+			b.WriteString(styMuted.Render(fmt.Sprintf("… %d/%d lines (↑/↓ to scroll)", min(start+maxLines, len(lines)), len(lines))) + "\n")
+		}
+	}
+
+	b.WriteString(styMuted.Render(strings.Repeat("─", inner)) + "\n")
+	hints := [][2]string{{"↑↓", "scroll"}}
+	if eventLink(ev) != "" {
+		hints = append(hints, [2]string{"o", "open the link"})
+	}
+	b.WriteString(keyHint(append(hints, [2]string{"esc", "close"})...))
+
+	return styOverlay.Width(w).Render(b.String())
 }

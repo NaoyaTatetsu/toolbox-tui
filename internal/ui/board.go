@@ -502,12 +502,18 @@ func (m Model) renderHelp() string {
 		{"enter", "task detail"},
 	}))
 	b.WriteString("\n")
-	b.WriteString(section("Calendar", [][2]string{
+	b.WriteString(section("Calendar — month grid", [][2]string{
 		{"← →", "previous / next day"},
 		{"↑ ↓", "previous / next week"},
 		{"H L", "previous / next month"},
-		{"J K", "select in the agenda"},
 		{"t", "back to today"},
+		{"enter", "open the selected day"},
+	}))
+	b.WriteString("\n")
+	b.WriteString(section("Calendar — day pane", [][2]string{
+		{"↑ ↓", "previous / next entry (J K too)"},
+		{"enter", "event detail"},
+		{"esc ←", "back to the grid"},
 	}))
 	b.WriteString("\n" + styMuted.Render("press any key to close"))
 	return styOverlay.Width(w).Render(b.String())
