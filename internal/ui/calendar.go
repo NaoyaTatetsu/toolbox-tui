@@ -8,7 +8,6 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	gh "github.com/NaoyaTatetsu/toolbox-tui/internal/github"
 	googlecalendar "github.com/NaoyaTatetsu/toolbox-tui/internal/google-calendar"
 )
 
@@ -17,6 +16,10 @@ const (
 	minCellWidth  = 4
 	maxCellWidth  = 18
 	minAgendaCols = 26
+	// Below this, a day cell cannot hold a two-digit date beside its column
+	// rule with anything left over, so the grid keeps the whole width and the
+	// agenda moves underneath it instead.
+	minSplitCell = 6
 )
 
 type calendarState struct {
@@ -58,83 +61,26 @@ func (m Model) updateCalendar(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if c.agenda > 0 {
 			c.agenda--
 		}
-	case "enter":
-		if it, ok := m.agendaTask(); ok {
-			m.detail = detailState{item: it}
-			m.overlay = overlayDetail
-		}
-	case "o":
-		if it, ok := m.agendaTask(); ok {
-			return m, openURL(it.URL)
-		}
 	}
 	return m, nil
 }
 
-// agendaEntry is one line of the day pane: either a calendar event or a task.
-// A task is "spanning" when the day merely falls inside its start–end range
-// rather than being the day it is due.
-type agendaEntry struct {
-	event    *googlecalendar.Event
-	task     *gh.Item
-	spanning bool
-}
-
-// agenda collects everything happening on the selected day: calendar events
-// first, then tasks due that day, then tasks merely in flight across it.
-func (m Model) agenda(day time.Time) []agendaEntry {
-	var out, spanning []agendaEntry
+// agenda collects the events happening on the selected day. Tasks are
+// deliberately absent: the board and the roadmap own them, and folding due
+// dates into the calendar left both the month cells and the day pane too busy
+// to read at a glance.
+func (m Model) agenda(day time.Time) []googlecalendar.Event {
+	var out []googlecalendar.Event
 	for i := range m.events {
 		if m.events[i].OccursOn(day) {
-			out = append(out, agendaEntry{event: &m.events[i]})
-		}
-	}
-	if m.project != nil {
-		for i := range m.project.Items {
-			it := &m.project.Items[i]
-			if it.StartDate == nil && it.EndDate == nil {
-				continue
-			}
-			if it.EndDate != nil && sameDay(*it.EndDate, day) {
-				out = append(out, agendaEntry{task: it})
-				continue
-			}
-			s, e := it.Span()
-			if !startOfDay(day).Before(startOfDay(s)) && !startOfDay(day).After(startOfDay(e)) {
-				spanning = append(spanning, agendaEntry{task: it, spanning: true})
-			}
-		}
-	}
-	return append(out, spanning...)
-}
-
-// dayCellEntries is what the month grid shows. Long-running tasks are left out:
-// repeating a task on every day of its span buries the days that matter, and
-// the roadmap already draws spans properly.
-func (m Model) dayCellEntries(day time.Time) []agendaEntry {
-	all := m.agenda(day)
-	out := all[:0:0]
-	for _, e := range all {
-		if !e.spanning {
-			out = append(out, e)
+			out = append(out, m.events[i])
 		}
 	}
 	return out
 }
 
-func (m Model) agendaTask() (gh.Item, bool) {
-	entries := m.agenda(m.month.day)
-	if m.month.agenda < 0 || m.month.agenda >= len(entries) {
-		return gh.Item{}, false
-	}
-	if t := entries[m.month.agenda].task; t != nil {
-		return *t, true
-	}
-	return gh.Item{}, false
-}
-
 func (m Model) renderCalendar(width, height, top int) string {
-	if len(m.cfg.Calendar.Sources) == 0 && m.project == nil {
+	if len(m.cfg.Calendar.Sources) == 0 {
 		return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center,
 			styMuted.Render("no calendar sources configured — add [[calendar.sources]] to "+m.cfg.ConfigPath()))
 	}
@@ -142,7 +88,7 @@ func (m Model) renderCalendar(width, height, top int) string {
 	// Side by side when there is room, stacked otherwise.
 	agendaW := 0
 	gridW := width
-	if width >= 7*minCellWidth+minAgendaCols+1 {
+	if width >= 7*minSplitCell+minAgendaCols+1 {
 		agendaW = clamp(width/3, minAgendaCols, 44)
 		gridW = width - agendaW - 1
 	}
@@ -177,31 +123,77 @@ func (m Model) renderCalendar(width, height, top int) string {
 		lipgloss.NewStyle().Width(agendaW).Render(pane))
 }
 
+// weekdayColor tints the weekend columns the way a wall calendar does: Sunday
+// red, Saturday blue.
+func weekdayColor(d time.Weekday) lipgloss.TerminalColor {
+	switch d {
+	case time.Sunday:
+		return colSunday
+	case time.Saturday:
+		return colSaturday
+	}
+	return colFg
+}
+
+// Each day cell opens with a vertical rule, so columns stay separated without
+// spending width on gaps; the row rules use the matching intersection glyph.
+const (
+	cellRule = "│"
+	rowCross = "┼"
+	rowRule  = "─"
+)
+
+// gridRule draws the horizontal rule between two week rows, aligned with the
+// per-cell vertical rules.
+func gridRule(cellW int) string {
+	col := rowCross + strings.Repeat(rowRule, cellW-1)
+	return styMuted.Render(strings.Repeat(col, 7))
+}
+
 func (m Model) renderMonthGrid(width, height, cellW, top int) string {
 	sel := m.month.day
 	first := time.Date(sel.Year(), sel.Month(), 1, 0, 0, 0, 0, sel.Location())
 	gridStart := first.AddDate(0, 0, -int(first.Weekday())) // back to Sunday
 
-	// Rows shrink before the grid does, so the whole month always fits.
+	// Rows shrink before the grid does, so the whole month always fits. The
+	// horizontal rules cost one line per week plus one under the weekday names;
+	// a short pane spends those lines on the cells instead.
 	rowH := clamp((height-2)/calendarWeeks, 1, 6)
+	rules := (height-2-calendarWeeks)/calendarWeeks >= 1
+	if rules {
+		rowH = clamp((height-2-calendarWeeks)/calendarWeeks, 1, 6)
+	}
 
 	var b strings.Builder
 	b.WriteString(styTitle.Render(center(sel.Format("January 2006"), width)) + "\n")
 
+	sep := styMuted.Render(cellRule)
 	var head strings.Builder
 	for i := 0; i < 7; i++ {
-		name := time.Weekday(i).String()[:min(3, cellW)]
+		name := time.Weekday(i).String()[:min(3, cellW-1)]
 		s := styMuted
 		if i == 0 || i == 6 {
-			s = lipgloss.NewStyle().Foreground(colDanger).Faint(true)
+			s = lipgloss.NewStyle().Foreground(weekdayColor(time.Weekday(i))).Faint(true)
 		}
-		head.WriteString(s.Render(center(name, cellW)))
+		head.WriteString(sep + s.Render(center(name, cellW-1)))
 	}
 	b.WriteString(head.String() + "\n")
 
-	// Two header lines precede the weeks: the month name and the weekday row.
+	// The month name and the weekday row precede the weeks, plus the rule under
+	// the weekday row when there is room for it.
 	weeksTop := top + 2
+	if rules {
+		b.WriteString(gridRule(cellW) + "\n")
+		weeksTop++
+	}
+	rowStride := rowH
+	if rules {
+		rowStride++
+	}
 	for w := 0; w < calendarWeeks; w++ {
+		if rules && w > 0 {
+			b.WriteString(gridRule(cellW) + "\n")
+		}
 		lines := make([]strings.Builder, rowH)
 		for d := 0; d < 7; d++ {
 			day := gridStart.AddDate(0, 0, w*7+d)
@@ -210,8 +202,10 @@ func (m Model) renderMonthGrid(width, height, cellW, top int) string {
 					lines[li].WriteString(cell)
 				}
 			}
+			// The rule belongs to the column but not to the day: clicking it
+			// would be ambiguous, so the hit region covers the text only.
 			m.hits.add(hitRegion{
-				x: d * cellW, y: weeksTop + w*rowH, w: cellW, h: rowH,
+				x: d*cellW + 1, y: weeksTop + w*rowStride, w: cellW - 1, h: rowH,
 				kind: hitCalendarDay, day: day,
 			})
 		}
@@ -222,20 +216,17 @@ func (m Model) renderMonthGrid(width, height, cellW, top int) string {
 	return strings.TrimRight(b.String(), "\n")
 }
 
-// renderDayCell returns exactly rowH lines for one day of the month grid.
+// renderDayCell returns exactly rowH lines for one day of the month grid. Each
+// line opens with the column rule, leaving cellW-1 cells for the text.
 func (m Model) renderDayCell(day, sel time.Time, cellW, rowH int) []string {
 	inMonth := day.Month() == sel.Month()
 	isToday := sameDay(day, m.now)
 	isSel := sameDay(day, sel)
+	textW := cellW - 1
 
-	base := lipgloss.NewStyle()
-	switch {
-	case !inMonth:
+	base := lipgloss.NewStyle().Foreground(weekdayColor(day.Weekday()))
+	if !inMonth {
 		base = base.Foreground(colMuted).Faint(true)
-	case day.Weekday() == time.Sunday || day.Weekday() == time.Saturday:
-		base = base.Foreground(colDanger)
-	default:
-		base = base.Foreground(colFg)
 	}
 	if isToday {
 		base = base.Background(colTodayBG).Bold(true)
@@ -244,146 +235,110 @@ func (m Model) renderDayCell(day, sel time.Time, cellW, rowH int) []string {
 		base = base.Background(colSelBG).Bold(true)
 	}
 
-	entries := m.dayCellEntries(day)
+	events := m.agenda(day)
+	sep := styMuted.Render(cellRule)
 	lines := make([]string, rowH)
 
 	num := fmt.Sprintf("%d", day.Day())
-	if isSel {
+	// The brackets are how a monochrome terminal shows the selection; they are
+	// only worth their two cells once the cell is wide enough to spare them.
+	if isSel && textW >= 5 {
 		num = "[" + num + "]"
 	}
-	lines[0] = base.Render(pad(" "+num, cellW))
+	lines[0] = sep + base.Render(pad(" "+num, textW))
 
 	if rowH == 1 {
-		// One-line cells: append a density marker beside the day number.
-		marker := densityMarker(entries)
-		lines[0] = base.Render(pad(" "+num+" "+marker, cellW))
+		// One-line cells: mark the day as busy beside its number, but never at
+		// the cost of the number itself.
+		line := " " + num
+		if mk := densityMarker(events); mk != "" && textW >= len(line)+2 {
+			line += " " + mk
+		}
+		lines[0] = sep + base.Render(pad(line, textW))
 		return lines
 	}
 
 	for i := 1; i < rowH; i++ {
 		idx := i - 1
-		if idx >= len(entries) {
-			lines[i] = base.Render(strings.Repeat(" ", cellW))
+		if idx >= len(events) {
+			lines[i] = sep + base.Render(strings.Repeat(" ", textW))
 			continue
 		}
 		// The last line summarises the remainder instead of showing one more.
-		if i == rowH-1 && len(entries) > rowH-1 {
-			lines[i] = base.Foreground(colMuted).Render(pad(fmt.Sprintf(" +%d more", len(entries)-idx), cellW))
+		if i == rowH-1 && len(events) > rowH-1 {
+			lines[i] = sep + base.Foreground(colMuted).Render(pad(fmt.Sprintf(" +%d more", len(events)-idx), textW))
 			continue
 		}
-		lines[i] = base.Render(pad(" "+entrySummary(entries[idx], cellW-1), cellW))
+		lines[i] = sep + base.Render(pad(" "+eventSummary(events[idx], textW-1), textW))
 	}
 	return lines
 }
 
-// densityMarker compresses a day's contents into a couple of glyphs for the
-// narrowest layout.
-func densityMarker(entries []agendaEntry) string {
-	var ev, task int
-	for _, e := range entries {
-		if e.event != nil {
-			ev++
-		} else {
-			task++
-		}
+// densityMarker compresses a day's contents into a glyph for the narrowest
+// layout, where there is no room to name anything.
+func densityMarker(events []googlecalendar.Event) string {
+	if len(events) == 0 {
+		return ""
 	}
-	s := ""
-	if ev > 0 {
-		s += "●"
-	}
-	if task > 0 {
-		s += "▪"
-	}
-	return s
+	return "●"
 }
 
-func entrySummary(e agendaEntry, width int) string {
-	if e.event != nil {
-		prefix := ""
-		if !e.event.AllDay {
-			prefix = e.event.Start.Format("15:04") + " "
-		}
-		return truncate(prefix+e.event.Summary, width)
+func eventSummary(e googlecalendar.Event, width int) string {
+	prefix := ""
+	if !e.AllDay {
+		prefix = e.Start.Format("15:04") + " "
 	}
-	return truncate("▪ "+e.task.Title, width)
+	return truncate(prefix+e.Summary, width)
 }
 
 func (m Model) renderAgenda(width, height, originX, originY int) string {
 	day := m.month.day
-	entries := m.agenda(day)
+	events := m.agenda(day)
 
 	var b strings.Builder
 	title := day.Format("2006-01-02 (Mon)")
 	if sameDay(day, m.now) {
 		title += "  today"
 	}
-	b.WriteString(styTitle.Render(truncate(title, width)) + "\n")
+	b.WriteString(lipgloss.NewStyle().Bold(true).Foreground(weekdayColor(day.Weekday())).
+		Render(truncate(title, width)) + "\n")
 	b.WriteString(styMuted.Render(strings.Repeat("─", max(1, width-1))) + "\n")
 
-	if len(entries) == 0 {
+	if len(events) == 0 {
 		b.WriteString(styMuted.Render("nothing scheduled"))
 		return b.String()
 	}
 
-	cursor := clamp(m.month.agenda, 0, len(entries)-1)
+	cursor := clamp(m.month.agenda, 0, len(events)-1)
 	rows := max(1, height-3)
-	start := clamp(cursor-rows/2, 0, max(0, len(entries)-rows))
+	start := clamp(cursor-rows/2, 0, max(0, len(events)-rows))
 
 	// The title and rule occupy the first two lines of the pane.
 	lineY := originY + 2
-	for i := start; i < len(entries) && i < start+rows; i++ {
-		e := entries[i]
+	for i := start; i < len(events) && i < start+rows; i++ {
+		ev := events[i]
 		entryTop := lineY
 		marker := "  "
 		if i == cursor {
 			marker = styAccent.Render("▸ ")
 		}
-		if e.event != nil {
-			ev := e.event
-			timeCol := stySubtle.Render(pad(ev.TimeLabel(), 12))
-			line := marker + timeCol + truncate(ev.Summary, max(4, width-15))
-			b.WriteString(line + "\n")
-			lineY++
-			if ev.Location != "" && width > 34 {
-				b.WriteString(styMuted.Render("    "+truncate(ev.Location, width-6)) + "\n")
-				lineY++
-			}
-			m.hits.add(hitRegion{
-				x: originX, y: entryTop, w: width, h: lineY - entryTop,
-				kind: hitAgendaEntry, index: i,
-			})
-			continue
-		}
-		it := e.task
-		dot := lipgloss.NewStyle().Foreground(priorityColor(it.Priority)).Render("▪")
-		label := it.Title
-		if it.Number > 0 {
-			label = fmt.Sprintf("#%d %s", it.Number, it.Title)
-		}
-		s := lipgloss.NewStyle().Foreground(colFg)
-		if it.IsDone() {
-			s = s.Faint(true).Strikethrough(true)
-		} else if it.Overdue(m.now) {
-			s = styDanger
-		}
-		suffix := " (due)"
-		if e.spanning {
-			suffix = " (wip)"
-		}
-		b.WriteString(marker + dot + " " +
-			s.Render(truncate(label, max(4, width-8-len(suffix)))) +
-			styMuted.Render(suffix) + "\n")
+		timeCol := stySubtle.Render(pad(ev.TimeLabel(), 12))
+		b.WriteString(marker + timeCol + truncate(ev.Summary, max(4, width-15)) + "\n")
 		lineY++
+		if ev.Location != "" && width > 34 {
+			b.WriteString(styMuted.Render("    "+truncate(ev.Location, width-6)) + "\n")
+			lineY++
+		}
 		m.hits.add(hitRegion{
-			x: originX, y: entryTop, w: width, h: 1,
+			x: originX, y: entryTop, w: width, h: lineY - entryTop,
 			kind: hitAgendaEntry, index: i,
 		})
 	}
 
-	if len(entries) > rows {
-		b.WriteString(styMuted.Render(fmt.Sprintf("%d/%d  (J/K to scroll)", cursor+1, len(entries))))
+	if len(events) > rows {
+		b.WriteString(styMuted.Render(fmt.Sprintf("%d/%d  (J/K to scroll)", cursor+1, len(events))))
 	} else {
-		b.WriteString(styMuted.Render(keyHint([2]string{"J/K", "select"}, [2]string{"enter", "task detail"})))
+		b.WriteString(styMuted.Render(keyHint([2]string{"J/K", "select"})))
 	}
 	return b.String()
 }

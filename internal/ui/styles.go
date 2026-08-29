@@ -20,6 +20,11 @@ var (
 	colBorder  = lipgloss.AdaptiveColor{Light: "#ced4da", Dark: "#45475a"}
 	colSelBG   = lipgloss.AdaptiveColor{Light: "#dbe4ff", Dark: "#2a2b3c"}
 	colTodayBG = lipgloss.AdaptiveColor{Light: "#fff3bf", Dark: "#3a3a2e"}
+
+	// Weekend columns of the calendar, following the convention of a Japanese
+	// wall calendar: Sunday in red, Saturday in blue.
+	colSunday   = lipgloss.AdaptiveColor{Light: "#c92a2a", Dark: "#f38ba8"}
+	colSaturday = lipgloss.AdaptiveColor{Light: "#1971c2", Dark: "#89b4fa"}
 )
 
 // ghColor maps GitHub's single-select palette names onto terminal colours.

@@ -6,7 +6,7 @@ Go + [Bubble Tea](https://github.com/charmbracelet/bubbletea) 製。
 
 - **Board** — Status 列ごとのカンバン。カードの移動でそのまま GitHub の Status を更新
 - **Roadmap** — Start Date / End Date のガントチャート。ズームとスクロール対応
-- **Calendar** — 月グリッド + 日別アジェンダ。Google Calendar の予定と、その日が期日のタスクを併記
+- **Calendar** — 月グリッド + 日別アジェンダ。Google Calendar の予定だけを表示（タスクは Board / Roadmap 側）
 - **タスク登録** — タイトル / 内容 / ラベル / 期日 / 優先度 を入力して Issue を作成し、Project に追加してフィールドを設定
 
 ## インストール
@@ -138,7 +138,6 @@ tt doctor
 | `H` `L` | 前月 / 翌月 |
 | `J` `K` | アジェンダ内の選択（`shift+↓` `shift+↑` も同じ） |
 | `t` | 今日へ |
-| `enter` | タスク詳細 |
 
 ### タスク登録フォーム
 

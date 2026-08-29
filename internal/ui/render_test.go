@@ -202,23 +202,15 @@ func TestSelectionSurvivesReload(t *testing.T) {
 	}
 }
 
-func TestCalendarAgendaMergesEventsAndTasks(t *testing.T) {
+// TestCalendarAgendaListsEventsOnly guards the split between the two halves of
+// the tool: the day pane is a calendar, not a second task list.
+func TestCalendarAgendaListsEventsOnly(t *testing.T) {
 	m := newTestModel(120, 40)
-	entries := m.agenda(time.Date(2026, 8, 28, 0, 0, 0, 0, time.Local))
-	var events, tasks int
-	for _, e := range entries {
-		if e.event != nil {
-			events++
-		} else {
-			tasks++
-		}
-	}
-	if events != 3 {
-		t.Errorf("got %d events on Aug 28, want 3 (all-day trip + 2 timed)", events)
-	}
-	// #103 spans Aug 26 – Sep 10, so it covers Aug 28.
-	if tasks != 1 {
-		t.Errorf("got %d tasks on Aug 28, want 1", tasks)
+	// #103 spans Aug 26 – Sep 10, so it covers Aug 28 and would have shown up
+	// here back when tasks were merged into the agenda.
+	events := m.agenda(time.Date(2026, 8, 28, 0, 0, 0, 0, time.Local))
+	if len(events) != 3 {
+		t.Errorf("got %d entries on Aug 28, want 3 (all-day trip + 2 timed events)", len(events))
 	}
 }
 
@@ -350,36 +342,21 @@ func stripANSI(s string) string {
 	return b.String()
 }
 
-// TestMonthGridOmitsSpanningTasks guards against the month view repeating a
-// long task on every day of its range, which drowns out the due dates.
-func TestMonthGridOmitsSpanningTasks(t *testing.T) {
+// TestCalendarShowsNoTasks checks the rendered frame rather than the model:
+// no task from the project may reach the month grid or the day pane.
+func TestCalendarShowsNoTasks(t *testing.T) {
 	m := newTestModel(120, 40)
-	// #103 runs Aug 26 – Sep 10 and is due Sep 10.
-	mid := time.Date(2026, 8, 30, 0, 0, 0, 0, time.Local)
-	for _, e := range m.dayCellEntries(mid) {
-		if e.task != nil && e.task.Number == 103 {
-			t.Error("a mid-span day should not show the task in the month grid")
+	m.view = viewCalendar
+	out := stripANSI(m.View())
+	// #102 is due Aug 27, #103 runs Aug 26 – Sep 10 and the draft is due Aug 31,
+	// so every one of them falls inside the rendered August grid.
+	for _, task := range []string{"請求書の確認", "quarterly report", "Draft with no issue"} {
+		if strings.Contains(out, task) {
+			t.Errorf("the calendar shows the task %q", task)
 		}
 	}
-	due := time.Date(2026, 9, 10, 0, 0, 0, 0, time.Local)
-	var found bool
-	for _, e := range m.dayCellEntries(due) {
-		if e.task != nil && e.task.Number == 103 {
-			found = true
-		}
-	}
-	if !found {
-		t.Error("the due date should show the task in the month grid")
-	}
-	// The agenda still surfaces it, marked as work in progress.
-	var spanning bool
-	for _, e := range m.agenda(mid) {
-		if e.task != nil && e.task.Number == 103 && e.spanning {
-			spanning = true
-		}
-	}
-	if !spanning {
-		t.Error("the agenda should still list the task as in flight")
+	if !strings.Contains(out, "Standup") {
+		t.Error("the calendar dropped its events along with the tasks")
 	}
 }
 
@@ -1191,13 +1168,13 @@ func TestClickSelectsCalendarDay(t *testing.T) {
 			t.Fatalf("region for %s is at row %d, past the %d-line frame",
 				r.day.Format("2006-01-02"), r.y, len(lines))
 		}
-		// A cell's first line holds only its day number, and every cell on that
-		// screen row is likewise ASCII, so byte offsets are cell offsets here.
-		plain := stripANSI(lines[r.y])
+		// A cell's first line holds only its day number, and the column rules
+		// beside it are single-width box characters, so runes are cells here.
+		plain := []rune(stripANSI(lines[r.y]))
 		if r.x+r.w > len(plain) {
 			t.Fatalf("region for %s spans past the line", r.day.Format("2006-01-02"))
 		}
-		cell := plain[r.x : r.x+r.w]
+		cell := string(plain[r.x : r.x+r.w])
 		if got := strings.TrimSpace(cell); got != fmt.Sprint(r.day.Day()) &&
 			got != "["+fmt.Sprint(r.day.Day())+"]" {
 			t.Errorf("cell at (%d,%d) reads %q but is mapped to %s",
@@ -1250,7 +1227,7 @@ func TestClickSelectsAgendaEntry(t *testing.T) {
 	m.view = viewCalendar
 	frame := m.View()
 
-	// The agenda for Aug 28 lists the all-day trip, two timed events, then #103.
+	// The agenda for Aug 28 lists the all-day trip and the two timed events.
 	entries := m.agenda(m.month.day)
 	if len(entries) < 3 {
 		t.Fatalf("fixture agenda has %d entries", len(entries))
@@ -1262,23 +1239,12 @@ func TestClickSelectsAgendaEntry(t *testing.T) {
 	clicked := click(m, x, y)
 	want := -1
 	for i, e := range entries {
-		if e.event != nil && e.event.Summary == "Standup" {
+		if e.Summary == "Standup" {
 			want = i
 		}
 	}
 	if clicked.month.agenda != want {
 		t.Errorf("clicking Standup at (%d,%d) selected agenda %d, want %d", x, y, clicked.month.agenda, want)
-	}
-
-	// Clicking a task row in the agenda must make enter open that task.
-	tx, ty, ok := findInFrame(frame, "#103")
-	if !ok {
-		t.Fatal("#103 is not on the agenda")
-	}
-	clicked = click(m, tx, ty)
-	it, has := clicked.agendaTask()
-	if !has || it.Number != 103 {
-		t.Errorf("clicking #103 at (%d,%d) did not select it as a task (got %+v)", tx, ty, it)
 	}
 }
 
